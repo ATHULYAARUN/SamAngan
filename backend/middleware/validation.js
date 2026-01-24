@@ -41,7 +41,7 @@ const validateUserRegistration = [
     .withMessage('Password must be at least 6 characters long'),
     
   body('role')
-    .isIn(['anganwadi-worker', 'asha-volunteer', 'parent', 'adolescent-girl', 'sanitation-worker'])
+    .isIn(['anganwadi-worker', 'asha-volunteer', 'parent', 'adolescent-girl', 'pregnant-woman', 'sanitation-worker'])
     .withMessage('Invalid role selected'),
     
   body('phone')
@@ -69,7 +69,7 @@ const validateUserLogin = [
     .withMessage('Password is required'),
     
   body('role')
-    .isIn(['anganwadi-worker', 'asha-volunteer', 'parent', 'adolescent-girl', 'sanitation-worker'])
+    .isIn(['anganwadi-worker', 'asha-volunteer', 'parent', 'adolescent-girl', 'pregnant-woman', 'sanitation-worker'])
     .withMessage('Role selection is required'),
     
   handleValidationErrors,

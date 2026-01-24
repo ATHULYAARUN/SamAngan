@@ -1044,6 +1044,7 @@ const registerPregnantWoman = async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
+};
 
 // Routes
 router.post('/register', validateUserRegistration, validateRoleSpecificData, registerUser);
