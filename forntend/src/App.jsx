@@ -17,6 +17,7 @@ import AWWDashboard from './pages/AWWDashboard';
 import ASHADashboard from './pages/ASHADashboard';
 import ParentDashboard from './pages/ParentDashboard';
 import AdolescentDashboard from './pages/AdolescentDashboard';
+import PregnantWomanDashboard from './pages/PregnantWomanDashboard';
 import SanitationDashboard from './pages/SanitationDashboard';
 
 // Import components
@@ -60,6 +61,7 @@ function AppContent() {
     '/asha-dashboard',
     '/parent-dashboard',
     '/adolescent-dashboard',
+    '/pregnant-woman-dashboard',
     '/sanitation-dashboard'
   ];
   
@@ -200,6 +202,11 @@ function AppContent() {
           <Route path="/adolescent-dashboard" element={
             <ProtectedRoute allowedRoles={['adolescent-girl']}>
               <AdolescentDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/pregnant-woman-dashboard" element={
+            <ProtectedRoute allowedRoles={['pregnant-woman']}>
+              <PregnantWomanDashboard />
             </ProtectedRoute>
           } />
           <Route path="/sanitation-dashboard" element={

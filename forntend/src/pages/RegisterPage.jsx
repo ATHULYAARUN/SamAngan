@@ -54,7 +54,7 @@ const RegisterPage = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Only allow self-registration for parents and adolescent girls
+  // Only allow self-registration for parents, adolescent girls, and pregnant women
   // Other roles (workers) are managed by admin
   const roles = [
     {
@@ -72,6 +72,14 @@ const RegisterPage = () => {
       icon: GraduationCap,
       color: 'secondary',
       responsibilities: 'View health records, menstrual hygiene tracking'
+    },
+    {
+      id: 'pregnant-woman',
+      title: 'Pregnant Woman',
+      description: 'Track your pregnancy and access maternal health services',
+      icon: Heart,
+      color: 'danger',
+      responsibilities: 'Prenatal care tracking, health tips, immunization schedule'
     }
   ];
 
@@ -552,6 +560,33 @@ const RegisterPage = () => {
             class: formData.grade || '',
             guardianName: formData.parentName || '',
             guardianPhone: formData.phone || '',
+          }
+        };
+      case 'pregnant-woman':
+        return {
+          pregnantWomanDetails: {
+            husbandName: formData.husbandName || '',
+            husbandPhone: formData.husbandPhone || '',
+            lastMenstrualPeriod: formData.lastMenstrualPeriod || '',
+            expectedDeliveryDate: formData.expectedDeliveryDate || '',
+            pregnancyNumber: formData.pregnancyNumber || 1,
+            bloodGroup: formData.bloodGroup || '',
+            height: formData.height || 0,
+            prePregnancyWeight: formData.prePregnancyWeight || 0,
+            currentWeight: formData.currentWeight || 0,
+            medicalHistory: {
+              diabetes: formData.medicalHistory?.diabetes || false,
+              hypertension: formData.medicalHistory?.hypertension || false,
+              heartDisease: formData.medicalHistory?.heartDisease || false,
+              kidneyDisease: formData.medicalHistory?.kidneyDisease || false,
+              thyroidDisorder: formData.medicalHistory?.thyroidDisorder || false,
+              anemia: formData.medicalHistory?.anemia || false,
+              allergies: formData.medicalHistory?.allergies || [],
+              medications: formData.medicalHistory?.medications || [],
+              previousComplications: formData.medicalHistory?.previousComplications || []
+            },
+            anganwadiCenter: formData.linkedAnganwadiCenter || '',
+            specialNeeds: formData.specialNeeds || ''
           }
         };
       default:
@@ -1088,6 +1123,222 @@ const RegisterPage = () => {
                   required
                 />
               </div>
+            </div>
+          </div>
+        );
+
+      case 'pregnant-woman':
+        return (
+          <div className="space-y-8">
+            {/* 🔹 Personal Details */}
+            <div className="bg-pink-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-pink-800 mb-4 flex items-center">
+                <Heart className="w-5 h-5 mr-2" />
+                Personal Details
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Date of Birth *</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="date"
+                      name="dateOfBirth"
+                      value={formData.dateOfBirth}
+                      onChange={handleChange}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Blood Group</label>
+                  <div className="relative">
+                    <Heart className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <select
+                      name="bloodGroup"
+                      value={formData.bloodGroup}
+                      onChange={handleChange}
+                      className={inputClass}
+                    >
+                      <option value="">Select blood group</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🔹 Pregnancy Details */}
+            <div className="bg-purple-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-purple-800 mb-4 flex items-center">
+                <Baby className="w-5 h-5 mr-2" />
+                Pregnancy Information
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Last Menstrual Period *</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="date"
+                      name="lastMenstrualPeriod"
+                      value={formData.lastMenstrualPeriod}
+                      onChange={handleChange}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Expected Delivery Date</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="date"
+                      name="expectedDeliveryDate"
+                      value={formData.expectedDeliveryDate}
+                      onChange={handleChange}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Pregnancy Number</label>
+                  <div className="relative">
+                    <Baby className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="number"
+                      name="pregnancyNumber"
+                      value={formData.pregnancyNumber}
+                      onChange={handleChange}
+                      className={inputClass}
+                      min="1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🔹 Spouse Information */}
+            <div className="bg-blue-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center">
+                <Users className="w-5 h-5 mr-2" />
+                Spouse Information
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Spouse/Husband Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="text"
+                      name="husbandName"
+                      value={formData.husbandName}
+                      onChange={handleChange}
+                      className={inputClass}
+                      placeholder="Enter spouse/husband name"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Spouse/Husband Phone</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                    <input
+                      type="tel"
+                      name="husbandPhone"
+                      value={formData.husbandPhone}
+                      onChange={handleChange}
+                      className={inputClass}
+                      placeholder="Enter 10-digit phone number"
+                      maxLength="10"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🔹 Health Measurements */}
+            <div className="bg-green-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center">
+                <Heart className="w-5 h-5 mr-2" />
+                Health Measurements
+              </h3>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Height (cm)</label>
+                  <input
+                    type="number"
+                    name="height"
+                    value={formData.height}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="Height in cm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Pre-Pregnancy Weight (kg)</label>
+                  <input
+                    type="number"
+                    name="prePregnancyWeight"
+                    value={formData.prePregnancyWeight}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="Weight in kg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-2">Current Weight (kg)</label>
+                  <input
+                    type="number"
+                    name="currentWeight"
+                    value={formData.currentWeight}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="Current weight in kg"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 🔹 Anganwadi Center */}
+            <div className="bg-yellow-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-yellow-800 mb-4">Linked Anganwadi Center</h3>
+              <div className="relative">
+                <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-5 h-5" />
+                <select
+                  name="linkedAnganwadiCenter"
+                  value={formData.linkedAnganwadiCenter}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="">Select Anganwadi Center</option>
+                  {anganwadiCenters.map(center => (
+                    <option key={center.code} value={center.code}>{center.name} ({center.code})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 🔹 Special Notes */}
+            <div className="bg-orange-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-orange-800 mb-4">Special Notes</h3>
+              <textarea
+                name="specialNeeds"
+                value={formData.specialNeeds}
+                onChange={handleChange}
+                className={inputClass}
+                rows="4"
+                placeholder="Any special medical needs, allergies, or medications..."
+              />
             </div>
           </div>
         );

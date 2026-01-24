@@ -67,6 +67,7 @@ const LoginPage = () => {
     { id: 'asha-volunteer', title: 'ASHA Worker/Volunteer', dashboard: '/asha-dashboard' },
     { id: 'parent', title: 'Parent/Guardian', dashboard: '/parent-dashboard' },
     { id: 'adolescent-girl', title: 'Adolescent Girl', dashboard: '/adolescent-dashboard' },
+    { id: 'pregnant-woman', title: 'Pregnant Woman', dashboard: '/pregnant-woman-dashboard' },
     { id: 'sanitation-worker', title: 'Sanitation Worker', dashboard: '/sanitation-dashboard' }
   ];
 

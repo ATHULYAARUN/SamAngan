@@ -121,6 +121,7 @@ const userSchema = new mongoose.Schema({
         'asha-volunteer',
         'parent',
         'adolescent-girl',
+        'pregnant-woman',
         'sanitation-worker'
       ],
       message: 'Invalid role selected',
@@ -180,6 +181,32 @@ const userSchema = new mongoose.Schema({
       class: String,
       guardianName: String,
       guardianPhone: String,
+    },
+    
+    // For Pregnant Woman
+    pregnantWomanDetails: {
+      husbandName: String,
+      husbandPhone: String,
+      lastMenstrualPeriod: Date,
+      expectedDeliveryDate: Date,
+      pregnancyNumber: Number,
+      bloodGroup: String,
+      height: Number,
+      prePregnancyWeight: Number,
+      currentWeight: Number,
+      medicalHistory: {
+        diabetes: Boolean,
+        hypertension: Boolean,
+        heartDisease: Boolean,
+        kidneyDisease: Boolean,
+        thyroidDisorder: Boolean,
+        anemia: Boolean,
+        allergies: [String],
+        medications: [String],
+        previousComplications: [String]
+      },
+      anganwadiCenter: String,
+      specialNeeds: String,
     },
     
     // For Sanitation Worker

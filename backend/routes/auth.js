@@ -913,8 +913,141 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// @desc    Register a new pregnant woman
+// @route   POST /api/auth/register-pregnant-woman
+// @access  Public
+const registerPregnantWoman = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+      phone,
+      dateOfBirth,
+      address,
+      husbandName,
+      husbandPhone,
+      lastMenstrualPeriod,
+      expectedDeliveryDate,
+      pregnancyNumber,
+      bloodGroup,
+      height,
+      prePregnancyWeight,
+      currentWeight,
+      medicalHistory,
+      anganwadiCenter,
+      specialNeeds
+    } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !password || !phone || !dateOfBirth) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: name, email, password, phone, dateOfBirth'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already registered'
+      });
+    }
+
+    // Validate age (15-50 years)
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    
+    if (age < 15 || age > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Age must be between 15 and 50 years'
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Create user object
+    const userData = {
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
+      role: 'pregnant-woman',
+      hashedPassword,
+      address: address || {},
+      roleSpecificData: {
+        pregnantWomanDetails: {
+          husbandName: husbandName?.trim() || '',
+          husbandPhone: husbandPhone?.trim() || '',
+          lastMenstrualPeriod: lastMenstrualPeriod ? new Date(lastMenstrualPeriod) : undefined,
+          expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : undefined,
+          pregnancyNumber: pregnancyNumber || 1,
+          bloodGroup: bloodGroup || '',
+          height: height || 0,
+          prePregnancyWeight: prePregnancyWeight || 0,
+          currentWeight: currentWeight || 0,
+          medicalHistory: medicalHistory || {},
+          anganwadiCenter: anganwadiCenter || '',
+          specialNeeds: specialNeeds?.trim() || ''
+        }
+      }
+    };
+
+    // Create and save user
+    const user = new User(userData);
+    await user.save();
+
+    console.log('✅ Pregnant woman registered successfully:', user.email);
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful. You can now log in with your credentials.',
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          phone: user.phone
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Pregnant woman registration error:', error);
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `User with this ${field} already exists`
+      });
+    }
+
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+
 // Routes
 router.post('/register', validateUserRegistration, validateRoleSpecificData, registerUser);
+router.post('/register-pregnant-woman', registerPregnantWoman);
 router.post('/login', loginUser);
 router.post('/google-login', googleLogin);
 router.post('/admin/login', validateAdminLogin, loginAdmin);
