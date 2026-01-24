@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { X, User, Mail, Phone, MapPin, Briefcase, Building, Save, AlertCircle, Key, Eye, EyeOff, Calendar, Upload, UserCheck, Contact } from 'lucide-react';
 
@@ -35,7 +36,7 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
       street: worker?.address?.street || '',
       city: worker?.address?.city || '',
       state: worker?.address?.state || 'Kerala',
-      pincode: worker?.address?.pincode || '',
+      pincode: worker?.address?.pincode || '686522',
       district: worker?.address?.district || 'Kottayam',
       block: worker?.address?.block || ''
     },
@@ -64,7 +65,18 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+  
+  // Real-time field validation errors
+  const [fieldErrors, setFieldErrors] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    alternatePhone: '',
+    emergencyContactPerson: '',
+    pincode: ''
+  });
 
+  // eslint-disable-next-line no-unused-vars
   const workerRoles = [
     { 
       id: 'anganwadi-worker', 
@@ -151,6 +163,61 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    let validatedValue = value;
+    let errorMessage = '';
+    
+    // Input validations based on field type
+    if (name === 'name' || name === 'emergencyContactPerson') {
+      // Only letters and single spaces between words allowed
+      // Block numbers and special characters
+      validatedValue = value.replace(/[^a-zA-Z\s]/g, '').replace(/\s{2,}/g, ' ');
+      
+      // Real-time validation
+      if (validatedValue && !/^[a-zA-Z\s]+$/.test(validatedValue)) {
+        errorMessage = 'Only letters and spaces are allowed';
+      } else if (value !== validatedValue) {
+        errorMessage = 'Numbers and special characters are not allowed';
+      }
+    } else if (name === 'phone' || name === 'alternatePhone') {
+      // Only 10 digits allowed, block letters and special characters
+      validatedValue = value.replace(/\D/g, '').slice(0, 10);
+      
+      // Check for more than 3 consecutive zeros
+      if (/0{4,}/.test(validatedValue)) {
+        errorMessage = 'Cannot have more than 3 consecutive zeros';
+        validatedValue = validatedValue.replace(/0{4,}/g, '000');
+      }
+      
+      // Real-time validation
+      if (validatedValue.length > 0 && validatedValue.length < 10) {
+        errorMessage = `Phone number must be 10 digits (${validatedValue.length}/10)`;
+      } else if (value !== validatedValue && !errorMessage) {
+        errorMessage = 'Only numbers are allowed';
+      }
+    } else if (name === 'email') {
+      // Basic email validation (allow alphanumeric, @, ., -, _)
+      validatedValue = value.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+      
+      // Real-time validation
+      if (validatedValue && !validatedValue.includes('@')) {
+        errorMessage = 'Email must include @';
+      } else if (validatedValue && validatedValue.includes('@') && !/^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(validatedValue)) {
+        errorMessage = 'Please enter a valid email address';
+      }
+    } else if (name === 'address.pincode') {
+      // Only 6 digits allowed for pincode
+      validatedValue = value.replace(/\D/g, '').slice(0, 6);
+      
+      if (validatedValue.length > 0 && validatedValue.length < 6) {
+        errorMessage = `Pincode must be 6 digits (${validatedValue.length}/6)`;
+      }
+    }
+    
+    // Update field errors
+    setFieldErrors(prev => ({
+      ...prev,
+      [name.includes('.') ? name.split('.')[1] : name]: errorMessage
+    }));
     
     if (name.startsWith('roleSpecificData.')) {
       const path = name.split('.');
@@ -163,7 +230,7 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
             ...prev.roleSpecificData,
             [section]: {
               ...prev.roleSpecificData?.[section],
-              [field]: value
+              [field]: validatedValue
             }
           }
         }));
@@ -178,7 +245,7 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
               ...prev.roleSpecificData?.[section],
               [subsection]: {
                 ...prev.roleSpecificData?.[section]?.[subsection],
-                [field]: value
+                [field]: validatedValue
               }
             }
           }
@@ -191,14 +258,14 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: value
+          [child]: validatedValue
         }
       }));
     } else {
       // Handle basic fields
       setFormData(prev => ({
         ...prev,
-        [name]: value
+        [name]: validatedValue
       }));
     }
 
@@ -265,20 +332,27 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
       setError('Full name is required');
       return false;
     }
+    // Validate name contains only letters and spaces
+    if (!/^[a-zA-Z\s]+$/.test(formData.name.trim())) {
+      setError('Full name can only contain letters and spaces');
+      return false;
+    }
     if (!formData.email.trim()) {
       setError('Email address is required');
       return false;
     }
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setError('Please enter a valid email address');
+    // Enhanced email validation - must include @
+    if (!formData.email.includes('@') || !/^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(formData.email)) {
+      setError('Please enter a valid email address (must include @)');
       return false;
     }
     if (!formData.phone.trim()) {
       setError('Phone number is required');
       return false;
     }
-    if (!/^\d{10}$/.test(formData.phone.replace(/\D/g, ''))) {
-      setError('Please enter a valid 10-digit phone number');
+    // Validate exactly 10 digits
+    if (!/^\d{10}$/.test(formData.phone)) {
+      setError('Phone number must be exactly 10 digits');
       return false;
     }
     if (!formData.role) {
@@ -333,10 +407,20 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
       }
     }
 
-    // Alternate phone validation (if provided)
-    if (formData.alternatePhone && !/^\d{10}$/.test(formData.alternatePhone.replace(/\D/g, ''))) {
-      setError('Please enter a valid 10-digit alternate phone number');
-      return false;
+    // Alternate phone validation (if provided) - must be exactly 10 digits
+    if (formData.alternatePhone && formData.alternatePhone.trim()) {
+      if (!/^\d{10}$/.test(formData.alternatePhone)) {
+        setError('Alternate phone number must be exactly 10 digits');
+        return false;
+      }
+    }
+
+    // Emergency Contact Person validation - only letters and spaces
+    if (formData.emergencyContactPerson && formData.emergencyContactPerson.trim()) {
+      if (!/^[a-zA-Z\s]+$/.test(formData.emergencyContactPerson.trim())) {
+        setError('Emergency contact person name can only contain letters and spaces');
+        return false;
+      }
     }
     
     // Password validation
@@ -734,10 +818,22 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.name ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
                     placeholder="Enter full name"
                     required
                   />
+                  {fieldErrors.name ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.name}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only letters and spaces allowed (no numbers or special characters)
+                    </p>
+                  )}
                 </div>
                 
                 <div>
@@ -749,10 +845,22 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter email address"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
+                    placeholder="example@email.com"
                     required
                   />
+                  {fieldErrors.email ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.email}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Must be a valid email address (must include @)
+                    </p>
+                  )}
                 </div>
                 
                 <div>
@@ -764,10 +872,23 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter phone number"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
+                    placeholder="10-digit phone number"
                     required
+                    maxLength="10"
                   />
+                  {fieldErrors.phone ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.phone}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only 10 digits allowed (max 3 consecutive zeros)
+                    </p>
+                  )}
                 </div>
                 
                 <div>
@@ -1112,12 +1233,20 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="address.pincode"
                     value={formData.address.pincode}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter pincode"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.pincode ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
+                    placeholder="686522"
                     maxLength="6"
-                    pattern="[0-9]{6}"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Auto-filled based on Anganwadi center selection</p>
+                  {fieldErrors.pincode ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.pincode}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">Default: 686522 (based on Anganwadi center)</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1139,9 +1268,22 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="alternatePhone"
                     value={formData.alternatePhone}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter alternate phone number"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.alternatePhone ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
+                    placeholder="10-digit phone number"
+                    maxLength="10"
                   />
+                  {fieldErrors.alternatePhone ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.alternatePhone}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only 10 digits allowed (max 3 consecutive zeros)
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1153,9 +1295,21 @@ const CreateWorkerModal = ({ worker, selectedRole, onClose, onSuccess }) => {
                     name="emergencyContactPerson"
                     value={formData.emergencyContactPerson}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter emergency contact person name"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      fieldErrors.emergencyContactPerson ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                    }`}
+                    placeholder="Enter contact person name"
                   />
+                  {fieldErrors.emergencyContactPerson ? (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {fieldErrors.emergencyContactPerson}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only letters and spaces allowed (no numbers or special characters)
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

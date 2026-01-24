@@ -20,6 +20,7 @@ const healthRoutes = require('./routes/health');
 const systemSettingsRoutes = require('./routes/systemSettings');
 const schemesRoutes = require('./routes/schemes-simple');
 const feedbackRoutes = require('./routes/feedback');
+const ashaRoutes = require('./routes/asha');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -125,6 +126,11 @@ app.use('/api/schemes', schemesRoutes);
 
 // Feedback routes (essential for parent feedback)
 app.use('/api/feedback', feedbackRoutes);
+
+// ASHA routes (for ASHA worker dashboard)
+try {
+  app.use('/api/asha', ashaRoutes);
+} catch (e) { console.log('ASHA routes not available'); }
 
 // Root endpoint
 app.get('/', (req, res) => {

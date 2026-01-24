@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 
 const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
+  // Create a PascalCase component to satisfy lint rules and keep animation API
+  const MotionDiv = motion.div;
+  
   const [formData, setFormData] = useState({
     name: '',
     dateOfBirth: '',
@@ -63,8 +66,69 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
 
   const [errors, setErrors] = useState({});
 
+  // Helper functions for real-time validation and cleaning
+  const cleanName = (value) => {
+    // Remove numbers and special characters, allow only letters and single spaces
+    let cleaned = value.replace(/[^A-Za-z\s]/g, '');
+    // Replace multiple spaces with single space
+    cleaned = cleaned.replace(/\s{2,}/g, ' ');
+    return cleaned;
+  };
+
+  const cleanPhone = (value) => {
+    // Remove all non-digit characters
+    return value.replace(/\D/g, '').slice(0, 10);
+  };
+
+  const cleanEmail = (value) => {
+    // Basic email cleaning - remove spaces
+    return value.trim().toLowerCase();
+  };
+
+  const validatePhoneRealtime = (phone) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 0) return '';
+    if (/0{3,}/.test(digits)) return 'Phone number cannot have 3 consecutive zeros';
+    if (digits.length < 10) return `Please enter 10 digits (${digits.length}/10)`;
+    return '';
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    let cleaned = value;
+
+    // Field-specific cleaning and real-time validation
+    if (name === 'name' || name === 'parentName') {
+      cleaned = cleanName(value);
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    } else if (name === 'phone' || name === 'parentPhone') {
+      cleaned = cleanPhone(value);
+      const msg = validatePhoneRealtime(cleaned);
+      setErrors(prev => ({ ...prev, [name]: msg }));
+    } else if (name === 'email' || name === 'parentEmail') {
+      cleaned = cleanEmail(value);
+      let msg = '';
+      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+      if (cleaned && !emailRegex.test(cleaned)) msg = 'Enter a valid email like example@gmail.com';
+      setErrors(prev => ({ ...prev, [name]: msg }));
+    } else if (name.includes('.')) {
+      const [parent, child] = name.split('.');
+      if (parent === 'address' && child === 'pincode') {
+        cleaned = (value || '').replace(/\D/g, '').slice(0, 6);
+        let msg = '';
+        if (cleaned && cleaned.length !== 6) msg = `Please enter a valid 6-digit pincode (${cleaned.length}/6)`;
+        setErrors(prev => ({ ...prev, [name]: msg }));
+      }
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent],
+          [child]: type === 'checkbox' ? checked : cleaned
+        }
+      }));
+      return;
+    }
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
@@ -72,21 +136,13 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: type === 'checkbox' ? checked : value
+          [child]: type === 'checkbox' ? checked : cleaned
         }
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        [name]: type === 'checkbox' ? checked : value
-      }));
-    }
-    
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
+        [name]: type === 'checkbox' ? checked : cleaned
       }));
     }
   };
@@ -94,6 +150,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
   const validateForm = () => {
     const newErrors = {};
 
+    // Required field validation
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
     if (!formData.parentName.trim()) newErrors.parentName = 'Parent name is required';
@@ -107,12 +164,47 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
     if (!formData.address.block.trim()) newErrors['address.block'] = 'Block is required';
     if (!formData.address.district.trim()) newErrors['address.district'] = 'District is required';
     if (!formData.address.state.trim()) newErrors['address.state'] = 'State is required';
-    if (!formData.address.pincode.trim()) newErrors['address.pincode'] = 'Pincode is required';
+    if (!formData.address.pincode.trim()) {
+      newErrors['address.pincode'] = 'Pincode is required';
+    } else {
+      const pincodeRegex = /^[0-9]{6}$/;
+      if (!pincodeRegex.test(formData.address.pincode)) {
+        newErrors['address.pincode'] = 'Please enter a valid 6-digit pincode';
+      }
+    }
 
-    // Validate phone number
-    const phoneRegex = /^(\+91\s?)?[0-9]{10}$/;
-    if (formData.parentPhone && !phoneRegex.test(formData.parentPhone)) {
-      newErrors.parentPhone = 'Please enter a valid phone number';
+    // Name format validation (letters and single spaces only)
+    const nameRegex = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
+    if (formData.name && !nameRegex.test(formData.name)) {
+      newErrors.name = 'Use letters only with single spaces between names';
+    }
+    if (formData.parentName && !nameRegex.test(formData.parentName)) {
+      newErrors.parentName = 'Use letters only with single spaces between names';
+    }
+
+    // Phone validation - exactly 10 digits
+    const phoneDigits = (formData.phone || '').replace(/\D/g, '');
+    if (phoneDigits && /0{3,}/.test(phoneDigits)) {
+      newErrors.phone = 'Phone number cannot have 3 consecutive zeros';
+    } else if (formData.phone && phoneDigits.length !== 10) {
+      newErrors.phone = 'Please enter a valid 10-digit phone number';
+    }
+
+    // Parent phone validation - exactly 10 digits (required)
+    const parentPhoneDigits = (formData.parentPhone || '').replace(/\D/g, '');
+    if (/0{3,}/.test(parentPhoneDigits)) {
+      newErrors.parentPhone = 'Phone number cannot have 3 consecutive zeros';
+    } else if (parentPhoneDigits.length !== 10) {
+      newErrors.parentPhone = 'Please enter a valid 10-digit phone number';
+    }
+
+    // Email validation
+    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+    if (formData.email && !emailRegex.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address (must include @)';
+    }
+    if (formData.parentEmail && !emailRegex.test(formData.parentEmail)) {
+      newErrors.parentEmail = 'Please enter a valid email address (must include @)';
     }
 
     // Validate age (10-19 years)
@@ -140,7 +232,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
   const errorClass = "text-red-500 text-sm mt-1";
 
   return (
-    <motion.div
+    <MotionDiv
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto"
@@ -213,6 +305,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
                 placeholder="Enter phone number (optional)"
               />
             </div>
+            {errors.phone && <p className={errorClass}>{errors.phone}</p>}
           </div>
 
           <div>
@@ -230,6 +323,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
                 placeholder="Enter email address (optional)"
               />
             </div>
+            {errors.email && <p className={errorClass}>{errors.email}</p>}
           </div>
 
           <div>
@@ -303,6 +397,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
                   placeholder="Enter parent email (optional)"
                 />
               </div>
+              {errors.parentEmail && <p className={errorClass}>{errors.parentEmail}</p>}
             </div>
 
             <div>
@@ -376,7 +471,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
                     name="education.isInSchool"
                     value="true"
                     checked={formData.education.isInSchool === true}
-                    onChange={(e) => handleChange({
+                    onChange={() => handleChange({
                       target: { name: 'education.isInSchool', value: true, type: 'checkbox', checked: true }
                     })}
                     className="mr-2"
@@ -389,7 +484,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
                     name="education.isInSchool"
                     value="false"
                     checked={formData.education.isInSchool === false}
-                    onChange={(e) => handleChange({
+                    onChange={() => handleChange({
                       target: { name: 'education.isInSchool', value: false, type: 'checkbox', checked: false }
                     })}
                     className="mr-2"
@@ -448,7 +543,7 @@ const AdolescentRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) =
           </button>
         </div>
       </form>
-    </motion.div>
+    </MotionDiv>
   );
 };
 

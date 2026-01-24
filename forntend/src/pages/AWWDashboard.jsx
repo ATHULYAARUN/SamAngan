@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import ChildRegistrationForm from '../components/Registration/ChildRegistrationForm';
@@ -10,6 +11,7 @@ import HealthGrowthMonitoring from '../components/health/HealthGrowthMonitoring'
 import AWWProfile from '../components/Profile/AWWProfile';
 import registrationService from '../services/registrationService';
 import authService from '../services/authService';
+import reportsService from '../services/reportsService';
 import sessionManager from '../utils/sessionManager';
 import { 
   Baby, 
@@ -177,6 +179,16 @@ const AWWDashboard = () => {
   const [showDistributionModal, setShowDistributionModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportForm, setReportForm] = useState({
+    attendancePresent: 38,
+    attendanceTotal: 45,
+    nutritionDistributed: 45,
+    healthCheckups: 8,
+    vaccinations: 3,
+    notes: '',
+    file: null,
+  });
 
   const handleLogout = async () => {
     try {
@@ -534,7 +546,7 @@ const AWWDashboard = () => {
               description: 'Add newborn baby',
               action: () => setShowRegistrationForm('newborn')
             }
-          ].map((item, index) => (
+          ].map((item) => (
             <motion.div
               key={item.title}
               whileHover={{ y: -5 }}
@@ -546,6 +558,7 @@ const AWWDashboard = () => {
               <h3 className="font-semibold text-black mb-2">{item.title}</h3>
               <p className="text-sm text-gray-600">{item.description}</p>
               <button
+                type="button"
                 onClick={item.action}
                 className={`mt-4 w-full bg-${item.color}-50 text-${item.color}-600 py-2 px-4 rounded-lg hover:bg-${item.color}-100 transition-colors`}
               >
@@ -873,7 +886,7 @@ const AWWDashboard = () => {
       <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-black">Submit Daily Activity Log</h3>
-          <button className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700">
+          <button onClick={() => setShowReportModal(true)} className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700">
             Submit Report
           </button>
         </div>
@@ -916,6 +929,77 @@ const AWWDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Submit Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg p-6 w-full max-w-lg mx-4"
+          >
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Submit Daily Report</h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Attendance Present</label>
+                <input type="number" value={reportForm.attendancePresent} onChange={(e)=>setReportForm(p=>({...p, attendancePresent: parseInt(e.target.value)||0}))} className="w-full px-3 py-2 border rounded" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Attendance Total</label>
+                <input type="number" value={reportForm.attendanceTotal} onChange={(e)=>setReportForm(p=>({...p, attendanceTotal: parseInt(e.target.value)||0}))} className="w-full px-3 py-2 border rounded" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Nutrition Distributed</label>
+                <input type="number" value={reportForm.nutritionDistributed} onChange={(e)=>setReportForm(p=>({...p, nutritionDistributed: parseInt(e.target.value)||0}))} className="w-full px-3 py-2 border rounded" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Health Checkups</label>
+                <input type="number" value={reportForm.healthCheckups} onChange={(e)=>setReportForm(p=>({...p, healthCheckups: parseInt(e.target.value)||0}))} className="w-full px-3 py-2 border rounded" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Vaccinations</label>
+                <input type="number" value={reportForm.vaccinations} onChange={(e)=>setReportForm(p=>({...p, vaccinations: parseInt(e.target.value)||0}))} className="w-full px-3 py-2 border rounded" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Attach Report (PDF/CSV/JPG/PNG)</label>
+                <input type="file" accept=".pdf,.csv,image/png,image/jpeg" onChange={(e)=>setReportForm(p=>({...p, file: e.target.files?.[0]||null}))} className="w-full" />
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm text-gray-700 mb-1">Notes</label>
+              <textarea value={reportForm.notes} onChange={(e)=>setReportForm(p=>({...p, notes: e.target.value}))} rows={3} className="w-full px-3 py-2 border rounded" />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async ()=>{
+                  try {
+                    const anganwadiCenter = localStorage.getItem('anganwadiCenter') || localStorage.getItem('userAnganwadiCenter') || 'Akkarakunnu Anganwadi';
+                    const res = await reportsService.uploadDailyReport({
+                      anganwadiCenter,
+                      attendancePresent: reportForm.attendancePresent,
+                      attendanceTotal: reportForm.attendanceTotal,
+                      nutritionDistributed: reportForm.nutritionDistributed,
+                      healthCheckups: reportForm.healthCheckups,
+                      vaccinations: reportForm.vaccinations,
+                      notes: reportForm.notes,
+                      file: reportForm.file,
+                    });
+                    alert(res?.message || 'Report submitted');
+                    setShowReportModal(false);
+                    setReportForm(p=>({...p, notes:'', file:null}));
+                  } catch (err) {
+                    alert(err.message || 'Failed to submit report');
+                  }
+                }}
+                className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700"
+              >
+                Submit
+              </button>
+              <button onClick={()=>setShowReportModal(false)} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">Cancel</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 

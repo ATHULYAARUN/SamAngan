@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { 
   Baby, 
@@ -50,6 +51,14 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
 
   const [errors, setErrors] = useState({});
   const [currentAllergy, setCurrentAllergy] = useState('');
+  
+  // Real-time field validation errors
+  const [fieldErrors, setFieldErrors] = useState({
+    name: '',
+    parentName: '',
+    parentPhone: '',
+    parentEmail: ''
+  });
 
   // Anganwadi Centers from database
   const anganwadiCenters = [
@@ -89,6 +98,8 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    let validatedValue = value;
+    let errorMessage = '';
     
     // Prevent modification of default location fields
     const nonEditableFields = ['address.village', 'address.block', 'address.district', 'address.state', 'address.pincode'];
@@ -96,25 +107,56 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
       return; // Don't allow changes to these fields
     }
     
-    // Block numbers in name fields (child name and parent name)
+    // Validate name fields (child name and parent name)
     if (name === 'name' || name === 'parentName') {
-      // Only allow letters and spaces - block any input with numbers
-      if (/[0-9]/.test(value)) {
-        return; // Don't update state if numbers are detected
+      // Only allow letters and single spaces between words
+      validatedValue = value.replace(/[^a-zA-Z\s]/g, '').replace(/\s{2,}/g, ' ');
+      
+      // Real-time validation
+      if (validatedValue && !/^[a-zA-Z\s]+$/.test(validatedValue)) {
+        errorMessage = 'Only letters and spaces are allowed';
+      } else if (value !== validatedValue) {
+        errorMessage = 'Numbers and special characters are not allowed';
       }
     }
     
-    // Block non-numeric input in phone field
+    // Validate phone field
     if (name === 'parentPhone') {
-      // Only allow digits (0-9)
-      if (!/^[0-9]*$/.test(value)) {
-        return; // Don't update state if non-digits are detected
+      // Only allow digits and limit to 10
+      validatedValue = value.replace(/\D/g, '').slice(0, 10);
+      
+      // Check for more than 3 consecutive zeros
+      if (/0{4,}/.test(validatedValue)) {
+        errorMessage = 'Cannot have more than 3 consecutive zeros';
+        validatedValue = validatedValue.replace(/0{4,}/g, '000');
       }
-      // Limit to 10 digits maximum
-      if (value.length > 10) {
-        return;
+      
+      // Real-time validation
+      if (validatedValue.length > 0 && validatedValue.length < 10) {
+        errorMessage = `Phone number must be 10 digits (${validatedValue.length}/10)`;
+      } else if (value !== validatedValue && !errorMessage) {
+        errorMessage = 'Only numbers are allowed';
       }
     }
+    
+    // Validate email field
+    if (name === 'parentEmail') {
+      // Basic email validation (allow alphanumeric, @, ., -, _)
+      validatedValue = value.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+      
+      // Real-time validation
+      if (validatedValue && !validatedValue.includes('@')) {
+        errorMessage = 'Email must include @';
+      } else if (validatedValue && validatedValue.includes('@') && !/^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(validatedValue)) {
+        errorMessage = 'Please enter a valid email address';
+      }
+    }
+    
+    // Update field errors
+    setFieldErrors(prev => ({
+      ...prev,
+      [name]: errorMessage
+    }));
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
@@ -122,13 +164,13 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: value
+          [child]: validatedValue
         }
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        [name]: value
+        [name]: validatedValue
       }));
     }
     
@@ -341,14 +383,22 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
                 value={formData.name}
                 onChange={handleChange}
                 onKeyPress={handleNameKeyPress}
-                className={`${inputClass} pl-12`}
+                className={`${inputClass} pl-12 ${fieldErrors.name ? 'border-red-500 bg-red-50' : ''}`}
                 placeholder="e.g., Arjun Kumar (two words only)"
               />
             </div>
+            {fieldErrors.name && (
+              <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {fieldErrors.name}
+              </p>
+            )}
             {errors.name && <p className={errorClass}>{errors.name}</p>}
-            <p className="text-xs text-gray-500 mt-1">
-              ℹ️ Enter exactly two words: First Name and Last Name
-            </p>
+            {!fieldErrors.name && (
+              <p className="text-xs text-gray-500 mt-1">
+                ℹ️ Only letters and single space allowed (no numbers or special characters)
+              </p>
+            )}
           </div>
 
           <div>
@@ -537,14 +587,22 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
                   value={formData.parentName}
                   onChange={handleChange}
                   onKeyPress={handleNameKeyPress}
-                  className={`${inputClass} pl-12`}
+                  className={`${inputClass} pl-12 ${fieldErrors.parentName ? 'border-red-500 bg-red-50' : ''}`}
                   placeholder="e.g., Priya Nair (letters and spaces only)"
                 />
               </div>
+              {fieldErrors.parentName && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.parentName}
+                </p>
+              )}
               {errors.parentName && <p className={errorClass}>{errors.parentName}</p>}
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ Only letters and spaces allowed
-              </p>
+              {!fieldErrors.parentName && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ℹ️ Only letters and single space allowed (no numbers or special characters)
+                </p>
+              )}
             </div>
 
             <div>
@@ -559,15 +617,23 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
                   value={formData.parentPhone}
                   onChange={handleChange}
                   onKeyPress={handlePhoneKeyPress}
-                  className={`${inputClass} pl-12`}
+                  className={`${inputClass} pl-12 ${fieldErrors.parentPhone ? 'border-red-500 bg-red-50' : ''}`}
                   placeholder="e.g., 9876543210 (10 digits only)"
                   maxLength={10}
                 />
               </div>
+              {fieldErrors.parentPhone && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.parentPhone}
+                </p>
+              )}
               {errors.parentPhone && <p className={errorClass}>{errors.parentPhone}</p>}
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ Enter exactly 10 digits (Indian mobile number)
-              </p>
+              {!fieldErrors.parentPhone && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ℹ️ Enter exactly 10 digits (max 3 consecutive zeros)
+                </p>
+              )}
             </div>
 
             <div>
@@ -581,14 +647,22 @@ const ChildRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
                   name="parentEmail"
                   value={formData.parentEmail}
                   onChange={handleChange}
-                  className={`${inputClass} pl-12`}
-                  placeholder="e.g., priya@gmail.com (valid email format)"
+                  className={`${inputClass} pl-12 ${fieldErrors.parentEmail ? 'border-red-500 bg-red-50' : ''}`}
+                  placeholder="e.g., priya@gmail.com (must include @)"
                 />
               </div>
+              {fieldErrors.parentEmail && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {fieldErrors.parentEmail}
+                </p>
+              )}
               {errors.parentEmail && <p className={errorClass}>{errors.parentEmail}</p>}
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ Optional: Enter valid email format (user@domain.com)
-              </p>
+              {!fieldErrors.parentEmail && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ℹ️ Optional: Must be valid email format (must include @)
+                </p>
+              )}
             </div>
 
             <div>

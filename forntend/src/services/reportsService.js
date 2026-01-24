@@ -1,4 +1,5 @@
 import axios from 'axios';
+import sessionManager from '../utils/sessionManager';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -12,9 +13,16 @@ class ReportsService {
     // Add request interceptor to include auth token
     this.api.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('authToken') || localStorage.getItem('adminToken');
+        // Try to get token from sessionManager first, then fallback to localStorage
+        const token = sessionManager.getToken() || 
+                      localStorage.getItem('authToken') || 
+                      localStorage.getItem('firebaseToken') || 
+                      localStorage.getItem('adminToken');
+        
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+        } else {
+          console.warn('⚠️ No authentication token found for reports API call');
         }
         return config;
       },
@@ -357,6 +365,39 @@ class ReportsService {
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Upload a daily activity report with optional file
+   */
+  async uploadDailyReport({
+    anganwadiCenter,
+    attendancePresent,
+    attendanceTotal,
+    nutritionDistributed,
+    healthCheckups,
+    vaccinations,
+    notes,
+    file
+  }) {
+    const formData = new FormData();
+    if (anganwadiCenter) formData.append('anganwadiCenter', anganwadiCenter);
+    if (attendancePresent !== undefined) formData.append('attendancePresent', attendancePresent);
+    if (attendanceTotal !== undefined) formData.append('attendanceTotal', attendanceTotal);
+    if (nutritionDistributed !== undefined) formData.append('nutritionDistributed', nutritionDistributed);
+    if (healthCheckups !== undefined) formData.append('healthCheckups', healthCheckups);
+    if (vaccinations !== undefined) formData.append('vaccinations', vaccinations);
+    if (notes) formData.append('notes', notes);
+    if (file) formData.append('reportFile', file);
+
+    try {
+      const response = await this.api.post('/daily', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Failed to submit daily report');
+    }
   }
 }
 

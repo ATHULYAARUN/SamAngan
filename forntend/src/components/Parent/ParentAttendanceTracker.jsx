@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { 
   Calendar, 
   CheckCircle, 
@@ -143,39 +144,39 @@ const ParentAttendanceTracker = () => {
   };
 
   // Load attendance data
-  const loadAttendanceData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get children data from parentService
-      const stats = await parentService.getParentStats();
-      
-      if (stats && stats.children && stats.children.length > 0) {
-        setChildren(stats.children);
-        
-        // Generate attendance data for each child
-        const attendanceMap = {};
-        stats.children.forEach(child => {
-          attendanceMap[child.id] = generateAttendanceForChild(child);
-        });
-        setAttendanceData(attendanceMap);
-        
-      } else {
-        setError('No children found');
-      }
-      
-    } catch (error) {
-      console.error('Error loading attendance data:', error);
-      setError('Failed to load attendance data');
-    } finally {
-      setLoading(false);
-    }
-  }, [generateAttendanceForChild]);
-
   useEffect(() => {
+    const loadAttendanceData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get children data from parentService
+        const stats = await parentService.getParentStats();
+        
+        if (stats && stats.children && stats.children.length > 0) {
+          setChildren(stats.children);
+          
+          // Generate attendance data for each child
+          const attendanceMap = {};
+          stats.children.forEach(child => {
+            attendanceMap[child.id] = generateAttendanceForChild(child);
+          });
+          setAttendanceData(attendanceMap);
+          
+        } else {
+          setError('No children found');
+        }
+        
+      } catch (error) {
+        console.error('Error loading attendance data:', error);
+        setError('Failed to load attendance data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadAttendanceData();
-  }, [loadAttendanceData]);
+  }, [generateAttendanceForChild]); // Only depends on generateAttendanceForChild
 
   // Render attendance calendar for a child
   const renderAttendanceCalendar = (child) => {
@@ -476,7 +477,7 @@ const ParentAttendanceTracker = () => {
 
   // Generate PDF report
   const generatePDFReport = useCallback((reportData, month, year) => {
-    const pdf = new jsPDF();
+    const doc = new jsPDF();
     const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     
     // Calculate overall statistics
@@ -491,23 +492,23 @@ const ParentAttendanceTracker = () => {
     };
 
     // Header
-    pdf.setFontSize(20);
-    pdf.setTextColor(40, 44, 52);
-    pdf.text('Monthly Attendance Report', 20, 25);
+    doc.setFontSize(20);
+    doc.setTextColor(40, 44, 52);
+    doc.text('Monthly Attendance Report', 20, 25);
     
-    pdf.setFontSize(14);
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`${monthName} - Anganwadi Center Report`, 20, 35);
+    doc.setFontSize(14);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`${monthName} - Anganwadi Center Report`, 20, 35);
     
     // Parent information
-    pdf.setFontSize(12);
-    pdf.text(`Parent: ${localStorage.getItem('userName') || 'Lekha Arun'}`, 20, 45);
-    pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 52);
+    doc.setFontSize(12);
+    doc.text(`Parent: ${localStorage.getItem('userName') || 'Lekha Arun'}`, 20, 45);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 52);
     
     // Overall Statistics Section
-    pdf.setFontSize(16);
-    pdf.setTextColor(40, 44, 52);
-    pdf.text('Overall Statistics', 20, 70);
+    doc.setFontSize(16);
+    doc.setTextColor(40, 44, 52);
+    doc.text('Overall Statistics', 20, 70);
     
     const overallData = [
       ['Metric', 'Value'],
@@ -518,7 +519,7 @@ const ParentAttendanceTracker = () => {
       ['Health-related Absences', overallStats.totalSickLeaves.toString()]
     ];
     
-    pdf.autoTable({
+    autoTable(doc, {
       head: [overallData[0]],
       body: overallData.slice(1),
       startY: 75,
@@ -527,24 +528,24 @@ const ParentAttendanceTracker = () => {
       margin: { left: 20, right: 20 }
     });
     
-    let currentY = pdf.lastAutoTable.finalY + 20;
+    let currentY = doc.lastAutoTable.finalY + 20;
     
     // Individual Child Reports
     Object.entries(reportData).forEach(([, data]) => {
       // Check if we need a new page
       if (currentY > 250) {
-        pdf.addPage();
+        doc.addPage();
         currentY = 20;
       }
       
       // Child Header
-      pdf.setFontSize(14);
-      pdf.setTextColor(40, 44, 52);
-      pdf.text(`${data.childName} (${data.childAge})`, 20, currentY);
+      doc.setFontSize(14);
+      doc.setTextColor(40, 44, 52);
+      doc.text(`${data.childName} (${data.childAge})`, 20, currentY);
       
-      pdf.setFontSize(10);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(`${data.anganwadiCenter}`, 20, currentY + 7);
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`${data.anganwadiCenter}`, 20, currentY + 7);
       
       // Child Statistics Table
       const childData = [
@@ -557,7 +558,7 @@ const ParentAttendanceTracker = () => {
         ['Behavior Rating', data.behaviorRating, '']
       ];
       
-      pdf.autoTable({
+      autoTable(doc, {
         head: [childData[0]],
         body: childData.slice(1),
         startY: currentY + 15,
@@ -571,13 +572,13 @@ const ParentAttendanceTracker = () => {
         }
       });
       
-      currentY = pdf.lastAutoTable.finalY + 5;
+      currentY = doc.lastAutoTable.finalY + 5;
       
       // Weekly Breakdown
       if (data.weeklyBreakdown && data.weeklyBreakdown.length > 0) {
-        pdf.setFontSize(12);
-        pdf.setTextColor(40, 44, 52);
-        pdf.text('Weekly Breakdown', 20, currentY + 10);
+        doc.setFontSize(12);
+        doc.setTextColor(40, 44, 52);
+        doc.text('Weekly Breakdown', 20, currentY + 10);
         
         const weeklyData = [
           ['Week', 'Present Days', 'Total Days', 'Attendance Rate']
@@ -592,7 +593,7 @@ const ParentAttendanceTracker = () => {
           ]);
         });
         
-        pdf.autoTable({
+        autoTable(doc, {
           head: [weeklyData[0]],
           body: weeklyData.slice(1),
           startY: currentY + 15,
@@ -601,18 +602,18 @@ const ParentAttendanceTracker = () => {
           margin: { left: 20, right: 20 }
         });
         
-        currentY = pdf.lastAutoTable.finalY + 10;
+        currentY = doc.lastAutoTable.finalY + 10;
       }
       
       // Recommendations
       if (currentY > 240) {
-        pdf.addPage();
+        doc.addPage();
         currentY = 20;
       }
       
-      pdf.setFontSize(12);
-      pdf.setTextColor(40, 44, 52);
-      pdf.text('Recommendations', 20, currentY);
+      doc.setFontSize(12);
+      doc.setTextColor(40, 44, 52);
+      doc.text('Recommendations', 20, currentY);
       
       let recommendation = '';
       if (data.attendanceRate >= 90) {
@@ -623,26 +624,26 @@ const ParentAttendanceTracker = () => {
         recommendation = `${data.childName} needs more regular attendance. Please consult with the Anganwadi worker.`;
       }
       
-      pdf.setFontSize(10);
-      pdf.setTextColor(60, 60, 60);
-      const splitRecommendation = pdf.splitTextToSize(recommendation, 170);
-      pdf.text(splitRecommendation, 20, currentY + 10);
+      doc.setFontSize(10);
+      doc.setTextColor(60, 60, 60);
+      const splitRecommendation = doc.splitTextToSize(recommendation, 170);
+      doc.text(splitRecommendation, 20, currentY + 10);
       
       currentY += 25 + (splitRecommendation.length * 4);
     });
     
     // Footer with summary
     if (currentY > 240) {
-      pdf.addPage();
+      doc.addPage();
       currentY = 20;
     }
     
-    pdf.setFontSize(14);
-    pdf.setTextColor(40, 44, 52);
-    pdf.text('Report Summary', 20, currentY);
+    doc.setFontSize(14);
+    doc.setTextColor(40, 44, 52);
+    doc.text('Report Summary', 20, currentY);
     
-    pdf.setFontSize(10);
-    pdf.setTextColor(60, 60, 60);
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
     
     let summaryText = '';
     if (overallStats.averageAttendance >= 90) {
@@ -653,22 +654,22 @@ const ParentAttendanceTracker = () => {
       summaryText = 'Attendance needs attention. Please discuss any barriers with the Anganwadi staff for support and solutions.';
     }
     
-    const splitSummary = pdf.splitTextToSize(summaryText, 170);
-    pdf.text(splitSummary, 20, currentY + 10);
+    const splitSummary = doc.splitTextToSize(summaryText, 170);
+    doc.text(splitSummary, 20, currentY + 10);
     
     // Add footer
-    const pageCount = pdf.internal.getNumberOfPages();
+    const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
-      pdf.setPage(i);
-      pdf.setFontSize(8);
-      pdf.setTextColor(150, 150, 150);
-      pdf.text(`Page ${i} of ${pageCount}`, 20, pdf.internal.pageSize.height - 10);
-      pdf.text('Generated by Sampoorna Aangan System', pdf.internal.pageSize.width - 80, pdf.internal.pageSize.height - 10);
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${i} of ${pageCount}`, 20, doc.internal.pageSize.height - 10);
+      doc.text('Generated by Sampoorna Aangan System', doc.internal.pageSize.width - 80, doc.internal.pageSize.height - 10);
     }
     
     // Save the PDF
     const fileName = `Attendance_Report_${monthName.replace(' ', '_')}_${localStorage.getItem('userName')?.replace(' ', '_') || 'Parent'}.pdf`;
-    pdf.save(fileName);
+    doc.save(fileName);
   }, []);
 
   // Generate detailed monthly report for a specific month/year
@@ -781,7 +782,18 @@ const ParentAttendanceTracker = () => {
             
             {/* Download Button */}
             <button 
-              onClick={() => generatePDFReport(reportData, reportMonth, reportYear)}
+              onClick={() => {
+                console.log('📥 Download PDF button clicked');
+                console.log('Report data:', reportData);
+                console.log('Report month:', reportMonth, 'Report year:', reportYear);
+                try {
+                  generatePDFReport(reportData, reportMonth, reportYear);
+                  console.log('✅ PDF generation completed');
+                } catch (error) {
+                  console.error('❌ PDF generation error:', error);
+                  alert('Error generating PDF: ' + error.message);
+                }
+              }}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Download className="w-4 h-4" />

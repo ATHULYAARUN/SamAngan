@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 
 // Import models
 const User = require('../models/User');
@@ -9,9 +12,35 @@ const Child = require('../models/Child');
 const PregnantWoman = require('../models/PregnantWoman');
 const Adolescent = require('../models/Adolescent');
 const Newborn = require('../models/Newborn');
+const DailyReport = require('../models/DailyReport');
 
 // Import middleware
-const { verifyFirebaseAuth, checkRole } = require('../middleware/auth');
+const { verifyFirebaseAuth, verifyFlexibleAuth, checkRole } = require('../middleware/auth');
+
+// Configure multer for daily report uploads (PDF/CSV/image)
+const reportsUploadDir = path.join(__dirname, '../uploads/daily-reports');
+if (!fs.existsSync(reportsUploadDir)) {
+  fs.mkdirSync(reportsUploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, reportsUploadDir);
+  },
+  filename: function (req, file, cb) {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, unique + '-' + safeName);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowed = ['application/pdf', 'text/csv', 'image/png', 'image/jpeg'];
+  if (allowed.includes(file.mimetype)) return cb(null, true);
+  cb(new Error('Invalid file type. Allowed: PDF, CSV, JPG, PNG'));
+};
+
+const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
 
 // @desc    Get dashboard statistics for reports
 // @route   GET /api/reports/dashboard-stats
@@ -971,5 +1000,60 @@ router.get('/anganwadi-centers', verifyFirebaseAuth, checkRole(['admin']), getAn
 router.get('/anganwadi-centers/:centerName/pdf', verifyFirebaseAuth, checkRole(['admin']), generateAnganwadiPDF);
 router.get('/consolidated-pdf', verifyFirebaseAuth, checkRole(['admin']), generateConsolidatedPDF);
 router.get('/wards', verifyFirebaseAuth, checkRole(['admin']), getWards);
+
+// @desc    Upload a daily activity report (with optional file)
+// @route   POST /api/reports/daily
+// @access  Private (AWW/ASHA)
+router.post('/daily', verifyFlexibleAuth, checkRole('anganwadi-worker', 'asha-volunteer', 'admin'), upload.single('reportFile'), async (req, res) => {
+  try {
+    const user = req.user;
+    const {
+      anganwadiCenter: centerFromBody,
+      attendancePresent,
+      attendanceTotal,
+      nutritionDistributed,
+      healthCheckups,
+      vaccinations,
+      notes
+    } = req.body || {};
+
+    const anganwadiCenter = centerFromBody || user.anganwadiCenter || 'Unknown Center';
+
+    const payload = {
+      anganwadiCenter,
+      workerId: user._id,
+      workerName: user.name || user.email || 'Unknown',
+      date: new Date().setHours(0, 0, 0, 0),
+      attendancePresent: Number(attendancePresent) || 0,
+      attendanceTotal: Number(attendanceTotal) || 0,
+      nutritionDistributed: Number(nutritionDistributed) || 0,
+      healthCheckups: Number(healthCheckups) || 0,
+      vaccinations: Number(vaccinations) || 0,
+      notes: notes || ''
+    };
+
+    if (req.file) {
+      payload.filePath = `/uploads/daily-reports/${req.file.filename}`;
+      payload.originalFilename = req.file.originalname;
+    }
+
+    const created = await DailyReport.create(payload);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Daily report submitted successfully',
+      data: {
+        id: created._id,
+        fileUrl: created.filePath || null
+      }
+    });
+  } catch (error) {
+    console.error('Daily report upload error:', error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to submit daily report'
+    });
+  }
+});
 
 module.exports = router;
