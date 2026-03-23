@@ -76,6 +76,19 @@ class HealthService {
     }
   }
 
+  // Get health statistics for dashboard (vaccinations due, nutrition stats, etc.)
+  async getHealthStatistics(anganwadiCenter) {
+    try {
+      const response = await apiClient.get(`${this.baseURL}/statistics`, {
+        params: { anganwadiCenter }
+      });
+      return response?.data?.data || { vaccinationsDue: 0, totalChildren: 0, nutritionStats: {} };
+    } catch (error) {
+      console.error('❌ Error fetching health statistics:', error);
+      return { vaccinationsDue: 0, totalChildren: 0, nutritionStats: {} };
+    }
+  }
+
   // Record vaccination
   async recordVaccination(childId, vaccinationData) {
     try {

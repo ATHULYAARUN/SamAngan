@@ -10,14 +10,10 @@ import {
   Save, 
   X, 
   Camera,
-  Award,
-  Users,
-  Baby,
-  Heart,
-  Activity,
   Clock,
   Building
 } from 'lucide-react';
+import sessionManager from '../../utils/sessionManager';
 
 const AWWProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
@@ -38,21 +34,26 @@ const AWWProfile = () => {
   });
   const [tempData, setTempData] = useState({});
 
-  // Load profile data from localStorage
+  // Load profile: session/user first, then localStorage, then defaults for Mohanakumari
   useEffect(() => {
+    const sessionUser = sessionManager.getUserData();
+    const centerName = sessionUser?.roleSpecificData?.anganwadiCenter?.name
+      || sessionUser?.roleSpecificData?.anganwadiCenter
+      || localStorage.getItem('anganwadiCenter')
+      || localStorage.getItem('userAnganwadiCenter');
     const userData = {
-      name: localStorage.getItem('userName') || 'Mohanakumari',
-      email: localStorage.getItem('userEmail') || 'mohanakumari.akkarakunnu@anganwadi.kerala.gov.in',
-      phone: localStorage.getItem('userPhone') || '+91 9447852963',
-      address: localStorage.getItem('userAddress') || 'Akkarakunnu, Thiruvananthapuram District, Kerala - 695301',
-      anganwadiCenter: 'Akkarakunnu Anganwadi Center',
-      employeeId: 'AWW-AKK-047',
-      joinDate: '2019-03-12',
-      qualification: 'Higher Secondary + ICDS Training Certification',
-      experience: '5 years 6 months',
-      specialization: 'Early Childhood Development & Maternal Health',
-      workingHours: '10:00 AM - 4:00 PM',
-      emergencyContact: '+91 9447852964',
+      name: sessionUser?.name || localStorage.getItem('userName') || 'Mohanakumari',
+      email: sessionUser?.email || localStorage.getItem('userEmail') || 'athulyaarunu@gmail.com',
+      phone: sessionUser?.phone || localStorage.getItem('userPhone') || '+91 9447852963',
+      address: localStorage.getItem('userAddress') || 'Akkarakunnu, Kottayam District, Kerala - 695301',
+      anganwadiCenter: centerName || localStorage.getItem('anganwadiCenter') || 'Akkarakunnu Anganwadi Center',
+      employeeId: localStorage.getItem('userEmployeeId') || 'AWW-AKK-047',
+      joinDate: localStorage.getItem('userJoinDate') || '2019-03-12',
+      qualification: localStorage.getItem('userQualification') || 'Higher Secondary + ICDS Training Certification',
+      experience: localStorage.getItem('userExperience') || '5 years 6 months',
+      specialization: localStorage.getItem('userSpecialization') || 'Early Childhood Development & Maternal Health',
+      workingHours: localStorage.getItem('userWorkingHours') || '10:00 AM - 4:00 PM',
+      emergencyContact: localStorage.getItem('userEmergencyContact') || '+91 9447852964',
       profilePicture: null
     };
     setProfileData(userData);
@@ -71,14 +72,21 @@ const AWWProfile = () => {
 
   const handleSave = () => {
     setProfileData({ ...tempData });
-    // Save to localStorage
+    // Persist all profile fields to localStorage so dashboard and other tabs use updated data
     localStorage.setItem('userName', tempData.name);
     localStorage.setItem('userEmail', tempData.email);
     localStorage.setItem('userPhone', tempData.phone);
     localStorage.setItem('userAddress', tempData.address);
+    localStorage.setItem('anganwadiCenter', tempData.anganwadiCenter);
+    localStorage.setItem('userAnganwadiCenter', tempData.anganwadiCenter);
+    localStorage.setItem('userEmployeeId', tempData.employeeId);
+    localStorage.setItem('userJoinDate', tempData.joinDate);
+    localStorage.setItem('userQualification', tempData.qualification);
+    localStorage.setItem('userExperience', tempData.experience);
+    localStorage.setItem('userSpecialization', tempData.specialization);
+    localStorage.setItem('userWorkingHours', tempData.workingHours);
+    localStorage.setItem('userEmergencyContact', tempData.emergencyContact);
     setIsEditing(false);
-    
-    // Show success message
     alert('Profile updated successfully!');
   };
 
@@ -147,11 +155,11 @@ const AWWProfile = () => {
             <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-6 text-sm opacity-90">
               <div className="flex items-center justify-center md:justify-start space-x-2">
                 <Building className="w-4 h-4" />
-                <span>{profileData.anganwadiCenter}</span>
+                <span>{isEditing ? tempData.anganwadiCenter : profileData.anganwadiCenter}</span>
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
                 <Clock className="w-4 h-4" />
-                <span>{profileData.workingHours}</span>
+                <span>{isEditing ? tempData.workingHours : profileData.workingHours}</span>
               </div>
             </div>
           </div>
@@ -277,16 +285,70 @@ const AWWProfile = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Professional Information</h2>
           <div className="space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Anganwadi Center</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={tempData.anganwadiCenter}
+                  onChange={(e) => handleInputChange('anganwadiCenter', e.target.value)}
+                  placeholder="e.g. Akkarakunnu Anganwadi Center"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Building className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900">{profileData.anganwadiCenter}</span>
+                </div>
+              )}
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
-              <span className="text-gray-900">{profileData.employeeId}</span>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={tempData.employeeId}
+                  onChange={(e) => handleInputChange('employeeId', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              ) : (
+                <span className="text-gray-900">{profileData.employeeId}</span>
+              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Join Date</label>
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-900">{new Date(profileData.joinDate).toLocaleDateString()}</span>
-              </div>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={tempData.joinDate}
+                  onChange={(e) => handleInputChange('joinDate', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900">{profileData.joinDate ? new Date(profileData.joinDate).toLocaleDateString() : '—'}</span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Working Hours</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={tempData.workingHours}
+                  onChange={(e) => handleInputChange('workingHours', e.target.value)}
+                  placeholder="e.g. 10:00 AM - 4:00 PM"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900">{profileData.workingHours}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -300,6 +362,21 @@ const AWWProfile = () => {
                 />
               ) : (
                 <span className="text-gray-900">{profileData.qualification}</span>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Experience</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={tempData.experience}
+                  onChange={(e) => handleInputChange('experience', e.target.value)}
+                  placeholder="e.g. 5 years 6 months"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              ) : (
+                <span className="text-gray-900">{profileData.experience || '—'}</span>
               )}
             </div>
 

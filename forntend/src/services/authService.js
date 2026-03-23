@@ -6,13 +6,13 @@ import {
   updateProfile,
   googleProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   sendPasswordResetEmail,
   sendEmailVerification
 } from '../config/firebase';
 import sessionManager from '../utils/sessionManager';
-
-// API base URL - use relative path for Vite proxy
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005/api';
+import { buildApiUrl, fetchWithRetry } from '../utils/apiClient';
 
 class AuthService {
   // Register user with Firebase and backend
@@ -49,7 +49,7 @@ class AuthService {
       }
       
       // 4. Register user in backend database (with or without Firebase)
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetchWithRetry(buildApiUrl('/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,34 +127,21 @@ class AuthService {
         // 2. Get Firebase ID token
         idToken = await firebaseUser.getIdToken();
         
-        // 3. Verify with backend using Firebase token
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        // 3. Verify with backend using Firebase token (use fetch so we can read body on 401)
+        const response = await fetch(buildApiUrl('/auth/login'), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            idToken,
-            role
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, role })
         });
-        
+        const responseText = await response.text();
+        if (!responseText) throw new Error('Empty response from server');
         try {
-          const responseText = await response.text();
-          console.log('🔍 Firebase auth response text:', responseText);
-          
-          if (!responseText) {
-            throw new Error('Empty response from server');
-          }
-          
           result = JSON.parse(responseText);
         } catch (jsonError) {
-          console.error('❌ JSON parsing error in Firebase auth:', jsonError);
           throw new Error('Server returned invalid response. Please try again.');
         }
-        
         if (!response.ok) {
-          throw new Error(result.message || 'Firebase login failed');
+          throw new Error(result.message || 'Login failed');
         }
         
         authMethod = 'firebase';
@@ -172,38 +159,22 @@ class AuthService {
           }
         }
         
-        // If Firebase fails, try direct authentication with backend
+        // If Firebase fails, try direct authentication with backend (use fetch so we can read body on 401)
         console.log('🔑 Attempting direct authentication...');
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        const response = await fetch(buildApiUrl('/auth/login'), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            email,
-            password,
-            role
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, role })
         });
-        
+        const responseText = await response.text();
+        if (!responseText) throw new Error('Empty response from server');
         try {
-          const responseText = await response.text();
-          console.log('🔍 Direct auth response text:', responseText);
-          
-          if (!responseText) {
-            throw new Error('Empty response from server');
-          }
-          
           result = JSON.parse(responseText);
-          console.log('📊 Direct auth response:', result);
         } catch (jsonError) {
-          console.error('❌ JSON parsing error in direct auth:', jsonError);
           throw new Error('Server returned invalid response. Please try again.');
         }
-        
         if (!response.ok) {
-          console.error('❌ Direct authentication failed:', result);
-          throw new Error(result.message || 'Login failed');
+          throw new Error(result.message || 'Invalid credentials. Please check your email and password.');
         }
         
         authMethod = 'direct';
@@ -231,15 +202,15 @@ class AuthService {
         localStorage.setItem('needsPasswordChange', 'true');
       }
 
-      // Create session using session manager
-      sessionManager.createSession({
-        id: result.data.user.id,
-        name: result.data.user.name,
-        email: result.data.user.email,
+      // Create session with full user object (including roleSpecificData for pregnant woman, parent, etc.)
+      const userForSession = {
+        ...result.data.user,
+        id: result.data.user.id || result.data.user._id,
         role: result.data.role,
         authMethod: result.data.authMethod || authMethod,
         needsPasswordChange: result.data.needsPasswordChange
-      });
+      };
+      sessionManager.createSession(userForSession);
       
       return {
         success: true,
@@ -256,45 +227,32 @@ class AuthService {
     }
   }
   
-  // Admin login (separate from Firebase)
+  // Admin login (separate from Firebase). Uses fetch() not fetchWithRetry so we can read
+  // the response body on 401 and show the backend's message instead of "HTTP 401".
   async loginAdmin(identifier, password) {
     try {
       console.log('🔐 Admin login attempt:', { identifier });
-      
-      // Call the backend admin login API
-      const response = await fetch(`${API_BASE_URL}/auth/admin/login`, {
+
+      const response = await fetch(buildApiUrl('/auth/admin/login'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          identifier,
-          password
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
       });
 
-      console.log('🔍 Response status:', response.status);
-      console.log('🔍 Response headers:', response.headers.get('content-type'));
-
+      const responseText = await response.text();
+      if (!responseText) {
+        throw new Error('Empty response from server. Please try again.');
+      }
       let result;
       try {
-        const responseText = await response.text();
-        console.log('🔍 Raw response:', responseText);
-        
-        if (!responseText) {
-          throw new Error('Empty response from server');
-        }
-        
         result = JSON.parse(responseText);
-        console.log('📊 Parsed admin login response:', result);
       } catch (jsonError) {
-        console.error('❌ JSON parsing error:', jsonError);
-        console.error('❌ Response was not valid JSON');
+        console.error('❌ Admin login response was not valid JSON');
         throw new Error('Server returned invalid response. Please try again.');
       }
 
       if (!response.ok) {
-        throw new Error(result.message || 'Admin login failed');
+        throw new Error(result.message || 'Invalid credentials. Please check your email/username and password.');
       }
 
       if (result.success) {
@@ -380,7 +338,7 @@ class AuthService {
         const idToken = await firebaseUser.getIdToken();
         
         // Get user data from backend
-        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        const response = await fetchWithRetry(buildApiUrl('/auth/me'), {
           headers: {
             'Authorization': `Bearer ${idToken}`
           }
@@ -429,100 +387,104 @@ class AuthService {
     return localStorage.getItem('adminToken');
   }
 
-  // Google Sign-in
+  // Google Sign-in: try popup first; if blocked, use redirect (no popup needed)
   async signInWithGoogle(role) {
     try {
       console.log('🔥 Starting Google Sign-in for role:', role);
-      
-      // Sign in with Google popup
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      
-      console.log('✅ Google popup authentication successful:', user.email);
-      
-      // Get Firebase ID token
-      const idToken = await user.getIdToken();
-      console.log('🔑 Firebase ID token obtained');
-      
-      // Check if user exists in backend
-      console.log('📡 Sending request to backend...');
-      const response = await fetch(`${API_BASE_URL}/auth/google-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          idToken,
-          role,
-          userData: {
-            name: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-            emailVerified: user.emailVerified
-          }
-        })
-      });
-      
-      console.log('📡 Backend response status:', response.status);
-      const data = await response.json();
-      console.log('📡 Backend response data:', data);
-      
-      if (!response.ok) {
-        console.error('❌ Backend rejected Google login:', data);
-        throw new Error(data.message || 'Google login failed');
-      }
-      
-      // Store user data in localStorage
-      localStorage.setItem('userRole', data.data.role);
-      localStorage.setItem('userName', data.data.user.name);
-      localStorage.setItem('userEmail', data.data.user.email);
-      localStorage.setItem('userId', data.data.user.id);
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('authMethod', 'google');
-      localStorage.setItem('firebaseToken', idToken);
 
-      // Create session using session manager
-      sessionManager.createSession({
-        id: data.data.user.id,
-        name: data.data.user.name,
-        email: data.data.user.email,
-        role: data.data.role,
-        authMethod: 'google',
-        photoURL: user.photoURL,
-        isNewUser: data.data.isNewUser
-      });
-      
-      console.log('✅ Google Sign-in completed successfully');
-      
-      return {
-        success: true,
-        user: user,
-        data: data.data,
-        dashboard: data.data.dashboard,
-        authMethod: 'google',
-        isNewUser: data.data.isNewUser
-      };
-      
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+        console.log('✅ Google popup authentication successful:', user.email);
+        return await this._completeGoogleLogin(user, role);
+      } catch (popupError) {
+        const isPopupBlocked =
+          popupError?.code === 'auth/popup-blocked' ||
+          popupError?.code === 'auth/cancelled-popup-request' ||
+          (popupError?.message && /popup|blocked/i.test(popupError.message));
+        if (isPopupBlocked) {
+          sessionStorage.setItem('googleSignInRole', role);
+          await signInWithRedirect(auth, googleProvider);
+          return { redirect: true };
+        }
+        throw popupError;
+      }
     } catch (error) {
       console.error('❌ Google Sign-in error:', error);
-      console.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        stack: error.stack
-      });
-      
-      // Sign out from Firebase if there was an error
       if (auth.currentUser) {
         try {
           await signOut(auth);
-          console.log('🧹 Cleaned up Firebase session after error');
-        } catch (signOutError) {
-          console.warn('Warning: Could not sign out from Firebase:', signOutError.message);
-        }
+        } catch (_) {}
       }
-      
       throw new Error(error.message || 'Google Sign-in failed');
+    }
+  }
+
+  // Complete Google login with backend (shared by popup and redirect flow)
+  async _completeGoogleLogin(user, role) {
+    const idToken = await user.getIdToken();
+    const response = await fetchWithRetry(buildApiUrl('/auth/google-login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        role,
+        userData: {
+          name: user.displayName,
+          email: user.email,
+          photoURL: user.photoURL,
+          emailVerified: user.emailVerified
+        }
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Google login failed');
+    }
+    localStorage.setItem('userRole', data.data.role);
+    localStorage.setItem('userName', data.data.user.name);
+    localStorage.setItem('userEmail', data.data.user.email);
+    localStorage.setItem('userId', data.data.user.id);
+    localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('authMethod', 'google');
+    localStorage.setItem('firebaseToken', idToken);
+    const userForSession = {
+      ...data.data.user,
+      id: data.data.user.id || data.data.user._id,
+      role: data.data.role,
+      authMethod: 'google',
+      photoURL: user.photoURL,
+      isNewUser: data.data.isNewUser
+    };
+    sessionManager.createSession(userForSession);
+    return {
+      success: true,
+      user,
+      data: data.data,
+      dashboard: data.data.dashboard,
+      authMethod: 'google',
+      isNewUser: data.data.isNewUser
+    };
+  }
+
+  // Call on login page load to handle return from Google redirect
+  async handleGoogleRedirectResult() {
+    try {
+      const result = await getRedirectResult(auth);
+      if (!result || !result.user) return null;
+      const role = sessionStorage.getItem('googleSignInRole') || 'parent';
+      sessionStorage.removeItem('googleSignInRole');
+      const loginResult = await this._completeGoogleLogin(result.user, role);
+      return loginResult;
+    } catch (error) {
+      console.error('Google redirect result error:', error);
+      sessionStorage.removeItem('googleSignInRole');
+      if (auth.currentUser) {
+        try {
+          await signOut(auth);
+        } catch (_) {}
+      }
+      throw error;
     }
   }
 
@@ -535,7 +497,7 @@ class AuthService {
       try {
         console.log('🔄 Trying backend password reset...');
         
-        const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        const response = await fetchWithRetry(buildApiUrl('/auth/forgot-password'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -642,7 +604,7 @@ class AuthService {
         throw new Error('Authentication token not found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      const response = await fetchWithRetry(buildApiUrl('/auth/change-password'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, 
@@ -10,7 +10,13 @@ import {
   Pill,
   FileText,
   Save,
-  X
+  X,
+  AlertTriangle,
+  Thermometer,
+  Ruler,
+  Clock,
+  Phone,
+  MapPin
 } from 'lucide-react';
 import ashaService from '../../services/ashaService';
 
@@ -18,22 +24,46 @@ const FieldVisitEntry = ({ onSuccess }) => {
   const MotionDiv = motion.div;
   const [formData, setFormData] = useState({
     visitDate: new Date().toISOString().split('T')[0],
-    personType: 'child', // child, woman, adolescent
+    personType: 'woman',
     personName: '',
     age: '',
+    location: '',
     weight: '',
     height: '',
     hemoglobin: '',
     bloodPressure: '',
+    temperature: '',
+    muac: '', // Mid-Upper Arm Circumference
     vaccination: {
       type: '',
       dose: '',
-      date: ''
+      date: '',
+      nextDue: ''
     },
     supplements: {
       iron: false,
       vitaminA: false,
-      deworming: false
+      deworming: false,
+      calcium: false,
+      folicAcid: false
+    },
+    healthIndicators: {
+      anemia: false,
+      malnutrition: false,
+      highRiskPregnancy: false,
+      immunizationDelay: false,
+      developmentalDelays: false
+    },
+    referrals: {
+      referred: false,
+      facility: '',
+      reason: '',
+      urgency: 'routine' // routine, urgent, emergency
+    },
+    followUp: {
+      required: false,
+      date: '',
+      notes: ''
     },
     remarks: ''
   });
@@ -57,25 +87,39 @@ const FieldVisitEntry = ({ onSuccess }) => {
     return num;
   };
 
+  /** Digits + one decimal point; optional max (e.g. °F body temp or MUAC cm). */
+  const cleanDecimalInput = (val, max) => {
+    if (!val) return '';
+    let cleaned = String(val).replace(/[^\d.]/g, '');
+    const firstDot = cleaned.indexOf('.');
+    if (firstDot !== -1) {
+      cleaned =
+        cleaned.slice(0, firstDot + 1) +
+        cleaned.slice(firstDot + 1).replace(/\./g, '');
+    }
+    const parts = cleaned.split('.');
+    if (parts[1] && parts[1].length > 2) {
+      cleaned = `${parts[0]}.${parts[1].slice(0, 2)}`;
+    }
+    const n = parseFloat(cleaned);
+    if (!Number.isNaN(n) && n > max) {
+      return String(max);
+    }
+    return cleaned;
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
-      if (parent === 'vaccination') {
+      
+      if (parent === 'vaccination' || parent === 'supplements' || parent === 'healthIndicators' || parent === 'referrals' || parent === 'followUp') {
         setFormData(prev => ({
           ...prev,
-          vaccination: {
-            ...prev.vaccination,
-            [child]: value
-          }
-        }));
-      } else if (parent === 'supplements') {
-        setFormData(prev => ({
-          ...prev,
-          supplements: {
-            ...prev.supplements,
-            [child]: checked
+          [parent]: {
+            ...prev[parent],
+            [child]: type === 'checkbox' ? checked : value
           }
         }));
       }
@@ -95,6 +139,12 @@ const FieldVisitEntry = ({ onSuccess }) => {
         // Allow decimal for hemoglobin (0-20)
         cleaned = value.replace(/[^\d.]/g, '');
         if (parseFloat(cleaned) > 20) cleaned = '20';
+      } else if (name === 'temperature') {
+        // Label is °F — typical range ~95–106; allow 80–120 (do not cap at 45, that was °C-style)
+        cleaned = cleanDecimalInput(value, 120);
+      } else if (name === 'muac') {
+        // Centimetres, often e.g. 22.5 — must allow decimals (cleanNumber stripped "." → 22.5 became 225)
+        cleaned = cleanDecimalInput(value, 50);
       }
       
       setFormData(prev => ({
@@ -141,23 +191,31 @@ const FieldVisitEntry = ({ onSuccess }) => {
       
       // Reset form
       setFormData({
+        ...formData,
         visitDate: new Date().toISOString().split('T')[0],
         personType: 'child',
         personName: '',
         age: '',
+        location: '',
         weight: '',
         height: '',
         hemoglobin: '',
         bloodPressure: '',
-        vaccination: { type: '', dose: '', date: '' },
-        supplements: { iron: false, vitaminA: false, deworming: false },
+        temperature: '',
+        muac: '',
+        vaccination: { type: '', dose: '', date: '', nextDue: '' },
+        supplements: { iron: false, vitaminA: false, deworming: false, calcium: false, folicAcid: false },
+        healthIndicators: formData.healthIndicators,
+        referrals: formData.referrals,
+        followUp: formData.followUp,
         remarks: ''
       });
       
       if (onSuccess) onSuccess();
     } catch (error) {
       console.error('Error creating field visit:', error);
-      alert(`Failed to record visit: ${error.message || 'Unknown error'}`);
+      const msg = error.message || 'Unknown error';
+      alert(`Failed to record visit: ${msg}${msg.includes('Cannot reach server') ? '' : '. Check your connection and try again.'}`);
     } finally {
       setIsLoading(false);
     }
@@ -230,6 +288,23 @@ const FieldVisitEntry = ({ onSuccess }) => {
               placeholder="Enter age"
             />
             {errors.age && <p className={errorClass}>{errors.age}</p>}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            House / Location
+          </label>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              name="location"
+              value={formData.location}
+              onChange={handleChange}
+              className={`${inputClass} pl-12`}
+              placeholder="e.g. Ward 3, House no."
+            />
           </div>
         </div>
 
@@ -332,7 +407,7 @@ const FieldVisitEntry = ({ onSuccess }) => {
         {/* Vaccination Record */}
         <div className="border-t pt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Vaccination Record (Optional)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Vaccine Type
@@ -373,54 +448,231 @@ const FieldVisitEntry = ({ onSuccess }) => {
                 className={inputClass}
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Next Due Date
+              </label>
+              <input
+                type="date"
+                name="vaccination.nextDue"
+                value={formData.vaccination.nextDue}
+                onChange={handleChange}
+                className={inputClass}
+              />
+            </div>
           </div>
         </div>
 
+        {/* Additional Health Details */}
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Health Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Temperature (°F)
+              </label>
+              <div className="relative">
+                <Thermometer className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  name="temperature"
+                  value={formData.temperature}
+                  onChange={handleChange}
+                  className={`${inputClass} pl-12`}
+                  placeholder="e.g., 98.6"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                MUAC (cm) - Mid-Upper Arm Circumference
+              </label>
+              <div className="relative">
+                <Ruler className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  name="muac"
+                  value={formData.muac}
+                  onChange={handleChange}
+                  className={`${inputClass} pl-12`}
+                  placeholder="e.g., 22.5"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Health Indicators */}
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Health Indicators</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { key: 'anemia', label: 'Anemia', icon: Droplet },
+              { key: 'malnutrition', label: 'Malnutrition', icon: AlertTriangle },
+              { key: 'highRiskPregnancy', label: 'High Risk Pregnancy', icon: Heart },
+              { key: 'immunizationDelay', label: 'Immunization Delay', icon: Clock },
+              { key: 'developmentalDelays', label: 'Developmental Delays', icon: Activity }
+            ].map((indicator) => (
+              <div key={indicator.key} className="flex items-center">
+                <input
+                  type="checkbox"
+                  name={`healthIndicators.${indicator.key}`}
+                  checked={formData.healthIndicators[indicator.key]}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+                <label className="ml-2 text-sm text-gray-700 flex items-center">
+                  <indicator.icon className="w-4 h-4 inline mr-1" />
+                  {indicator.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Referral Section */}
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Referral Information</h3>
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="referrals.referred"
+                checked={formData.referrals.referred}
+                onChange={handleChange}
+                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <label className="ml-2 text-sm font-medium text-gray-700">
+                Refer to Health Facility
+              </label>
+            </div>
+
+            {formData.referrals.referred && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pl-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Facility Name
+                  </label>
+                  <input
+                    type="text"
+                    name="referrals.facility"
+                    value={formData.referrals.facility}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="e.g., PHC, District Hospital"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason for Referral
+                  </label>
+                  <input
+                    type="text"
+                    name="referrals.reason"
+                    value={formData.referrals.reason}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="e.g., Severe anemia, High fever"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Urgency Level
+                  </label>
+                  <select
+                    name="referrals.urgency"
+                    value={formData.referrals.urgency}
+                    onChange={handleChange}
+                    className={inputClass}
+                  >
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="emergency">Emergency</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Follow-up Section */}
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Follow-up Required</h3>
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="followUp.required"
+                checked={formData.followUp.required}
+                onChange={handleChange}
+                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <label className="ml-2 text-sm font-medium text-gray-700">
+                Follow-up Visit Required
+              </label>
+            </div>
+
+            {formData.followUp.required && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Follow-up Date
+                  </label>
+                  <input
+                    type="date"
+                    name="followUp.date"
+                    value={formData.followUp.date}
+                    onChange={handleChange}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Follow-up Notes
+                  </label>
+                  <input
+                    type="text"
+                    name="followUp.notes"
+                    value={formData.followUp.notes}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="e.g., Check hemoglobin levels, Monitor weight"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
         {/* Nutrition Supplements */}
         <div className="border-t pt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Nutrition Supplements Provided</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="supplements.iron"
-                checked={formData.supplements.iron}
-                onChange={handleChange}
-                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-              />
-              <label className="ml-2 text-sm text-gray-700">
-                <Pill className="w-4 h-4 inline mr-1" />
-                Iron Tablets
-              </label>
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="supplements.vitaminA"
-                checked={formData.supplements.vitaminA}
-                onChange={handleChange}
-                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-              />
-              <label className="ml-2 text-sm text-gray-700">
-                <Pill className="w-4 h-4 inline mr-1" />
-                Vitamin A
-              </label>
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="supplements.deworming"
-                checked={formData.supplements.deworming}
-                onChange={handleChange}
-                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-              />
-              <label className="ml-2 text-sm text-gray-700">
-                <Pill className="w-4 h-4 inline mr-1" />
-                Deworming Tablets
-              </label>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { key: 'iron', label: 'Iron Tablets', icon: Pill },
+              { key: 'vitaminA', label: 'Vitamin A', icon: Pill },
+              { key: 'deworming', label: 'Deworming Tablets', icon: Pill },
+              { key: 'calcium', label: 'Calcium', icon: Pill },
+              { key: 'folicAcid', label: 'Folic Acid', icon: Pill }
+            ].map((supplement) => (
+              <div key={supplement.key} className="flex items-center">
+                <input
+                  type="checkbox"
+                  name={`supplements.${supplement.key}`}
+                  checked={formData.supplements[supplement.key]}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+                <label className="ml-2 text-sm text-gray-700 flex items-center">
+                  <supplement.icon className="w-4 h-4 inline mr-1" />
+                  {supplement.label}
+                </label>
+              </div>
+            ))}
           </div>
         </div>
 

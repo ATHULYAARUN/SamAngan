@@ -10,7 +10,7 @@ import HealthMonitoring from "../components/admin/HealthMonitoring";
 import HealthMonitoringTest from "../components/admin/HealthMonitoringTest";
 import HealthMonitoringSimple from "../components/admin/HealthMonitoringSimple";
 import ErrorBoundary from "../components/ErrorBoundary";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Users, 
   Baby, 
@@ -44,9 +44,15 @@ import dashboardService from '../services/dashboardService';
 import authService from '../services/authService';
 import sessionManager from '../utils/sessionManager';
 
+const VALID_TAB_IDS = ['overview', 'anganwadis', 'users', 'workers', 'monitoring', 'waste', 'reports', 'settings'];
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(() =>
+    VALID_TAB_IDS.includes(tabFromUrl) ? tabFromUrl : 'overview'
+  );
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -59,8 +65,8 @@ const AdminDashboard = () => {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const filterMenuRef = useRef(null);
   
-  // Force reports rendering state
-  const [forceReports, setForceReports] = useState(false);
+  // Force reports rendering state (true when URL or state says reports)
+  const [forceReports, setForceReports] = useState(() => tabFromUrl === 'reports');
   const [connectionStatus, setConnectionStatus] = useState('connecting'); // connecting, online, offline, error
 
   // Set up real-time dashboard updates
@@ -154,6 +160,15 @@ const AdminDashboard = () => {
       dashboardService.setUpdateFrequency('low');
     }
   }, [activeTab]);
+
+  // Keep activeTab in sync with URL (e.g. browser back/forward or initial load)
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (VALID_TAB_IDS.includes(tab) && tab !== activeTab) {
+      setActiveTab(tab);
+      setForceReports(tab === 'reports');
+    }
+  }, [searchParams]);
 
   // Close filter menu when clicking outside
   useEffect(() => {
@@ -789,96 +804,122 @@ const AdminDashboard = () => {
     </ErrorBoundary>
   );
 
-  const renderWasteManagement = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">Waste Management Monitoring</h2>
-      
-      {/* Waste Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-600">Collection Rate</h3>
-            <Activity className="w-5 h-5 text-green-500" />
-          </div>
-          <p className="text-2xl font-bold text-black">94.5%</p>
-          <p className="text-xs text-green-600">+2.1% from last week</p>
-        </motion.div>
+  const renderWasteManagement = () => {
+    const summary = dashboardData?.stats?.wasteManagementSummary || {};
+    const logs = summary.recentWasteLogs || [];
 
-        <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-600">Pending Collections</h3>
-            <Bell className="w-5 h-5 text-orange-500" />
-          </div>
-          <p className="text-2xl font-bold text-black">8</p>
-          <p className="text-xs text-orange-600">Requires attention</p>
-        </motion.div>
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-black">Waste Management Monitoring</h2>
+        
+        {/* Waste Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-600">Collection Rate</h3>
+              <Activity className="w-5 h-5 text-green-500" />
+            </div>
+            <p className="text-2xl font-bold text-black">
+              {summary.collectionRate != null ? `${summary.collectionRate}%` : '0%'}
+            </p>
+            <p className="text-xs text-green-600">
+              {summary.collectionRate != null ? 'Based on today’s sanitation tasks' : 'No data for today'}
+            </p>
+          </motion.div>
 
-        <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-600">Active Workers</h3>
-            <Users className="w-5 h-5 text-blue-500" />
-          </div>
-          <p className="text-2xl font-bold text-black">15</p>
-          <p className="text-xs text-blue-600">On duty today</p>
-        </motion.div>
+          <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-600">Pending Collections</h3>
+              <Bell className="w-5 h-5 text-orange-500" />
+            </div>
+            <p className="text-2xl font-bold text-black">{summary.pendingCollections ?? 0}</p>
+            <p className="text-xs text-orange-600">Sanitation tasks pending or in progress</p>
+          </motion.div>
 
+          <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-600">Active Workers</h3>
+              <Users className="w-5 h-5 text-blue-500" />
+            </div>
+            <p className="text-2xl font-bold text-black">{summary.activeSanitationWorkers ?? 0}</p>
+            <p className="text-xs text-blue-600">Sanitation workers (active accounts)</p>
+          </motion.div>
+
+          <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-600">Waste Collected Today</h3>
+              <TrendingUp className="w-5 h-5 text-purple-500" />
+            </div>
+            <p className="text-2xl font-bold text-black">{summary.wasteTodayKg ?? 0} kg</p>
+            <p className="text-xs text-purple-600">From sanitation worker logs</p>
+          </motion.div>
+        </div>
+
+        {/* Waste Collection Logs */}
         <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-600">Feedback Score</h3>
-            <TrendingUp className="w-5 h-5 text-purple-500" />
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-black">Recent Collection Logs</h3>
+            <span className="text-sm text-gray-500">
+              Showing latest {logs.length || 0} entries from sanitation dashboard
+            </span>
           </div>
-          <p className="text-2xl font-bold text-black">4.2/5</p>
-          <p className="text-xs text-purple-600">Community rating</p>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Center</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recorded By</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {logs.map((log) => (
+                  <tr key={log._id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-black">Ward 9</td>
+                    <td className="px-4 py-3 text-sm text-black">
+                      {log.anganwadiCenter || 'Akkarakunnu Anganwadi'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-black">{log.wasteType}</td>
+                    <td className="px-4 py-3 text-sm text-black">
+                      {log.quantity} {log.quantityUnit}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          log.collectionStatus === 'Collected'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}
+                      >
+                        {log.collectionStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{log.recordedBy || 'Sanitation Worker'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {log.date ? new Date(log.date).toLocaleString() : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{log.remarks || '-'}</td>
+                  </tr>
+                ))}
+                {logs.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={8}>
+                      No sanitation waste logs found yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </motion.div>
       </div>
-
-      {/* Waste Collection Logs */}
-      <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-black">Recent Collection Logs</h3>
-          <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-            View All Logs
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Worker</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {[
-                { area: 'Ward 1', worker: 'Ravi Kumar', status: 'Completed', time: '09:30 AM', notes: 'All bins collected' },
-                { area: 'Ward 2', worker: 'Sunita Devi', status: 'In Progress', time: '10:15 AM', notes: 'Partial collection' },
-                { area: 'Ward 3', worker: 'Mohan Singh', status: 'Pending', time: '-', notes: 'Equipment issue' }
-              ].map((log, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-black">{log.area}</td>
-                  <td className="px-4 py-3 text-sm text-black">{log.worker}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      log.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                      log.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {log.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{log.time}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{log.notes}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-    </div>
-  );
+    );
+  };
 
   const renderSettings = () => (
     <ErrorBoundary>
@@ -1029,26 +1070,13 @@ const AdminDashboard = () => {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => {
-                  console.log('🔄 Tab clicked:', tab.id, tab.label);
-                  console.log('🔄 Previous activeTab:', activeTab);
-                  
-                  // Prevent any redirection by handling the click properly
-                  if (tab.id === 'reports') {
-                    console.log('🚀 REPORTS TAB CLICKED - SETTING ACTIVE TAB');
-                    setForceReports(true);
-                    setActiveTab('reports');
-                  } else {
-                    setForceReports(false);
-                    setActiveTab(tab.id);
-                  }
-                  
-                  console.log('🔄 Setting activeTab to:', tab.id);
-                  
-                  // Add a small delay to check if it changes back
-                  setTimeout(() => {
-                    console.log('🔄 ActiveTab after 100ms:', activeTab);
-                  }, 100);
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setForceReports(tab.id === 'reports');
+                  setActiveTab(tab.id);
+                  setSearchParams(tab.id === 'overview' ? {} : { tab: tab.id });
                 }}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200 ${
                   activeTab === tab.id

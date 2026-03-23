@@ -12,12 +12,63 @@ import {
   FileText,
   Clock,
   MapPin,
-  Award
+  Award,
+  X
 } from 'lucide-react';
 import DashboardCard from '../Dashboard/DashboardCard';
+import NewbornRegistrationForm from '../Registration/NewbornRegistrationForm';
+import NewbornRegistrationsView from '../Anganwadi/NewbornRegistrationsView';
 
 const AnganwadiWorkerModule = () => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [isNewbornRegistrationModalOpen, setIsNewbornRegistrationModalOpen] = useState(false);
+
+  // Handler functions
+  const handleRegisterNewborn = () => {
+    setIsNewbornRegistrationModalOpen(true);
+  };
+
+  const handleNewbornRegistrationSubmit = async (formData) => {
+    try {
+      console.log('Newborn registration data:', formData);
+      // Here you would make an API call to save the data
+      // await fetch('/api/anganwadi/newborn-registration', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(formData)
+      // });
+      
+      setIsNewbornRegistrationModalOpen(false);
+      // Show success message or refresh data
+      alert('Newborn registered successfully!');
+    } catch (error) {
+      console.error('Error registering newborn:', error);
+      alert('Error registering newborn. Please try again.');
+    }
+  };
+
+  const handleQuickAction = (actionName) => {
+    switch (actionName) {
+      case 'Register New Child':
+        handleRegisterNewborn();
+        break;
+      case 'Mark Attendance':
+        setActiveTab('attendance');
+        break;
+      case 'Health Checkup':
+        setActiveTab('health');
+        break;
+      case 'Nutrition Record':
+        setActiveTab('nutrition');
+        break;
+      case 'Generate Report':
+        // Handle report generation
+        console.log('Generate report clicked');
+        break;
+      default:
+        console.log('Unknown action:', actionName);
+    }
+  };
 
   const workerStats = [
     {
@@ -57,6 +108,7 @@ const AnganwadiWorkerModule = () => {
   const tabs = [
     { id: 'overview', name: 'Overview', icon: Activity },
     { id: 'children', name: 'Children Management', icon: Baby },
+    { id: 'newborn', name: 'Newborn Registrations', icon: UserPlus },
     { id: 'attendance', name: 'Attendance', icon: Calendar },
     { id: 'health', name: 'Health Records', icon: Heart },
     { id: 'nutrition', name: 'Nutrition', icon: Utensils },
@@ -217,7 +269,7 @@ const AnganwadiWorkerModule = () => {
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
                 <div className="space-y-3">
                   {[
-                    { name: 'Register New Child', icon: UserPlus, color: 'blue' },
+                    { name: 'Register Newborn', icon: UserPlus, color: 'blue' },
                     { name: 'Mark Attendance', icon: Calendar, color: 'green' },
                     { name: 'Health Checkup', icon: Heart, color: 'red' },
                     { name: 'Nutrition Record', icon: Utensils, color: 'orange' },
@@ -229,6 +281,7 @@ const AnganwadiWorkerModule = () => {
                         key={action.name}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
+                        onClick={() => handleQuickAction(action.name)}
                         className="w-full flex items-center p-3 text-left rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-all duration-200"
                       >
                         <Icon className={`w-5 h-5 mr-3 text-${action.color}-600`} />
@@ -238,6 +291,11 @@ const AnganwadiWorkerModule = () => {
                   })}
                 </div>
               </div>
+            </div>
+            <div className="text-center py-12">
+              <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Attendance System</h3>
+              <p className="text-gray-600">Daily attendance tracking interface will be implemented here.</p>
             </div>
           </div>
         )}
@@ -293,6 +351,10 @@ const AnganwadiWorkerModule = () => {
               </table>
             </div>
           </div>
+        )}
+
+        {activeTab === 'newborn' && (
+          <NewbornRegistrationsView />
         )}
 
         {activeTab === 'attendance' && (
@@ -363,6 +425,19 @@ const AnganwadiWorkerModule = () => {
           </div>
         )}
       </motion.div>
+
+      {/* Newborn Registration Modal */}
+      {isNewbornRegistrationModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <NewbornRegistrationForm
+              onSubmit={handleNewbornRegistrationSubmit}
+              onCancel={() => setIsNewbornRegistrationModalOpen(false)}
+              isLoading={false}
+            />
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

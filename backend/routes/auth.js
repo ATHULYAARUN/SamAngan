@@ -105,6 +105,48 @@ const registerUser = async (req, res) => {
 
     console.log('✅ User registered successfully:', user.email);
 
+    // For pregnant-woman role: also create PregnantWoman record so dashboard can load profile
+    if (role === 'pregnant-woman' && roleSpecificData?.pregnantWomanDetails) {
+      try {
+        const PregnantWoman = require('../models/PregnantWoman');
+        const pw = roleSpecificData.pregnantWomanDetails;
+        const addr = address || {};
+        const pregnantWomanRecord = new PregnantWoman({
+          name: name.trim(),
+          dateOfBirth: pw.dateOfBirth ? new Date(pw.dateOfBirth) : new Date(Date.now() - 25 * 365 * 24 * 60 * 60 * 1000), // fallback ~25y
+          phone: (phone || '').trim(),
+          email: (email || '').toLowerCase().trim(),
+          husbandName: (pw.husbandName || 'N/A').trim(),
+          husbandPhone: (pw.husbandPhone || '').trim(),
+          address: {
+            street: addr.street || addr.house || 'N/A',
+            village: addr.village || addr.ward || addr.city || 'N/A',
+            block: addr.block || 'N/A',
+            district: addr.district || 'N/A',
+            state: addr.state || 'Kerala',
+            pincode: (addr.pincode || '000000').toString().replace(/\D/g, '').slice(0, 6) || '000000',
+          },
+          lastMenstrualPeriod: pw.lastMenstrualPeriod ? new Date(pw.lastMenstrualPeriod) : (() => { const d = new Date(); d.setDate(d.getDate() - 84); return d; })(),
+          expectedDeliveryDate: pw.expectedDeliveryDate ? new Date(pw.expectedDeliveryDate) : (() => { const lmp = pw.lastMenstrualPeriod ? new Date(pw.lastMenstrualPeriod) : new Date(Date.now() - 84 * 24 * 60 * 60 * 1000); const edd = new Date(lmp); edd.setDate(edd.getDate() + 280); return edd; })(),
+          pregnancyNumber: pw.pregnancyNumber || 1,
+          bloodGroup: pw.bloodGroup || undefined,
+          height: pw.height || undefined,
+          prePregnancyWeight: pw.prePregnancyWeight || undefined,
+          currentWeight: pw.currentWeight || undefined,
+          medicalHistory: pw.medicalHistory || {},
+          anganwadiCenter: (pw.anganwadiCenter || 'N/A').trim(),
+          registeredBy: user._id,
+          userId: user._id,
+          specialNeeds: (pw.specialNeeds || '').trim() || undefined,
+          notes: undefined,
+        });
+        await pregnantWomanRecord.save();
+        console.log('✅ PregnantWoman record created for user:', user.email);
+      } catch (pwErr) {
+        console.error('⚠️ PregnantWoman record creation failed (user still created):', pwErr.message);
+      }
+    }
+
     // Return success response (don't include sensitive data)
     res.status(201).json({
       success: true,
@@ -603,6 +645,7 @@ const getDashboardRoute = (role) => {
     'asha-volunteer': '/asha-dashboard',
     'parent': '/parent-dashboard',
     'adolescent-girl': '/adolescent-dashboard',
+    'pregnant-woman': '/pregnant-woman-dashboard',
     'sanitation-worker': '/sanitation-dashboard',
   };
   
@@ -1002,7 +1045,45 @@ const registerPregnantWoman = async (req, res) => {
     const user = new User(userData);
     await user.save();
 
+    // Also create PregnantWoman record for the pregnancy dashboard (schema: lastMenstrualPeriod, expectedDeliveryDate, anganwadiCenter, address nested, registeredBy)
+    const PregnantWoman = require('../models/PregnantWoman');
+    const addr = address || {};
+    const lmpDate = lastMenstrualPeriod ? new Date(lastMenstrualPeriod) : new Date(Date.now() - 84 * 24 * 60 * 60 * 1000);
+    const eddDate = expectedDeliveryDate ? new Date(expectedDeliveryDate) : (() => { const d = new Date(lmpDate); d.setDate(d.getDate() + 280); return d; })();
+    const pregnantWomanData = {
+      name: name.trim(),
+      dateOfBirth: new Date(dateOfBirth),
+      phone: phone.trim(),
+      email: email.toLowerCase().trim(),
+      husbandName: husbandName?.trim() || 'N/A',
+      husbandPhone: husbandPhone?.trim() || '',
+      lastMenstrualPeriod: lmpDate,
+      expectedDeliveryDate: eddDate,
+      pregnancyNumber: pregnancyNumber || 1,
+      bloodGroup: bloodGroup || undefined,
+      height: height || undefined,
+      prePregnancyWeight: prePregnancyWeight || undefined,
+      currentWeight: currentWeight || undefined,
+      medicalHistory: medicalHistory || {},
+      address: {
+        street: addr.street || addr.house || 'N/A',
+        village: addr.village || addr.ward || addr.city || 'N/A',
+        block: addr.block || 'N/A',
+        district: addr.district || 'N/A',
+        state: addr.state || 'Kerala',
+        pincode: (addr.pincode || '000000').toString().replace(/\D/g, '').slice(0, 6) || '000000',
+      },
+      anganwadiCenter: (anganwadiCenter || 'N/A').trim(),
+      registeredBy: user._id,
+      userId: user._id,
+      specialNeeds: specialNeeds?.trim() || undefined,
+    };
+
+    const pregnantWoman = new PregnantWoman(pregnantWomanData);
+    await pregnantWoman.save();
+
     console.log('✅ Pregnant woman registered successfully:', user.email);
+    console.log('✅ PregnantWoman record created:', pregnantWoman._id);
 
     res.status(201).json({
       success: true,

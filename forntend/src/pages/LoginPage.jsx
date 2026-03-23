@@ -21,12 +21,12 @@ const LoginPage = () => {
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [checkingRedirect, setCheckingRedirect] = useState(true);
 
-  // Clear any existing session on login page load
+  // Clear any existing session on login page load; handle Google redirect return
   useEffect(() => {
     console.log('🔐 Login page loaded, checking for existing session...');
     
-    // If user came from logout or session expired, ensure clean slate
     const urlParams = new URLSearchParams(window.location.search);
     const fromLogout = urlParams.get('logout') === 'true';
     
@@ -35,7 +35,6 @@ const LoginPage = () => {
       sessionManager.destroySession();
     }
     
-    // If user is already authenticated and on login page, redirect to their dashboard
     if (sessionManager.isAuthenticated()) {
       const userRole = sessionManager.getUserRole();
       const dashboardRoutes = {
@@ -44,13 +43,31 @@ const LoginPage = () => {
         'asha-volunteer': '/asha-dashboard',
         'parent': '/parent-dashboard',
         'adolescent-girl': '/adolescent-dashboard',
+        'pregnant-woman': '/pregnant-woman-dashboard',
         'sanitation-worker': '/sanitation-dashboard'
       };
-      
       const dashboardPath = dashboardRoutes[userRole] || '/';
       console.log('🔄 User already authenticated, redirecting to:', dashboardPath);
       navigate(dashboardPath, { replace: true });
+      setCheckingRedirect(false);
+      return;
     }
+    
+    // Handle return from Google Sign-In redirect (when popup was blocked)
+    authService.handleGoogleRedirectResult()
+      .then((result) => {
+        if (result && result.success) {
+          if (result.isNewUser) {
+            alert(`Welcome ${result.data.user.name}! Your account has been created successfully.`);
+          }
+          navigate(result.dashboard || '/', { replace: true });
+        }
+      })
+      .catch((err) => {
+        console.error('Google redirect login failed:', err);
+        setError(err.message || 'Google sign-in failed. Please try again.');
+      })
+      .finally(() => setCheckingRedirect(false));
   }, [navigate]);
 
   // Admin default credentials
@@ -212,6 +229,11 @@ const LoginPage = () => {
         >
           {showForgotPassword ? (
             <ForgotPassword onBack={handleForgotPasswordBack} />
+          ) : checkingRedirect ? (
+            <div className="py-8 flex flex-col items-center justify-center gap-3 text-gray-600">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+              <p>Checking sign-in...</p>
+            </div>
           ) : (
             <>
               <form onSubmit={handleSubmit} className="space-y-6">

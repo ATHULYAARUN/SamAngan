@@ -12,9 +12,10 @@ import ashaService from '../../services/ashaService';
 const FeedbackForm = ({ onSuccess }) => {
   const MotionDiv = motion.div;
   const [formData, setFormData] = useState({
-    feedbackType: 'health', // health, sanitation, nutrition
+    feedbackType: 'health',
+    subject: '',
     message: '',
-    priority: 'medium', // low, medium, high
+    priority: 'medium',
     photo: null
   });
 
@@ -81,6 +82,7 @@ const FeedbackForm = ({ onSuccess }) => {
       
       await ashaService.createFeedback({
         ...formData,
+        subject: formData.subject || formData.feedbackType,
         ashaArea,
         ashaName,
         submittedAt: new Date().toISOString()
@@ -91,6 +93,7 @@ const FeedbackForm = ({ onSuccess }) => {
       // Reset form
       setFormData({
         feedbackType: 'health',
+        subject: '',
         message: '',
         priority: 'medium',
         photo: null
@@ -110,9 +113,13 @@ const FeedbackForm = ({ onSuccess }) => {
   const errorClass = "text-red-500 text-sm mt-1";
 
   const feedbackTypes = [
-    { value: 'health', label: 'Health Issue', icon: '🏥', color: 'red' },
-    { value: 'sanitation', label: 'Sanitation Issue', icon: '🚰', color: 'blue' },
-    { value: 'nutrition', label: 'Nutrition Concern', icon: '🍎', color: 'orange' }
+    { value: 'high_risk_pregnancy', label: 'High-risk pregnancy', icon: '🤰', color: 'red' },
+    { value: 'severe_anemia', label: 'Severe anemia', icon: '🩸', color: 'red' },
+    { value: 'child_malnutrition', label: 'Child malnutrition', icon: '👶', color: 'amber' },
+    { value: 'vaccine_delay', label: 'Vaccine delay', icon: '💉', color: 'amber' },
+    { value: 'sanitation', label: 'Sanitation issue', icon: '🚰', color: 'blue' },
+    { value: 'health', label: 'Other health', icon: '🏥', color: 'gray' },
+    { value: 'nutrition', label: 'Nutrition concern', icon: '🍎', color: 'orange' }
   ];
 
   return (
@@ -157,16 +164,32 @@ const FeedbackForm = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Priority Level */}
+        {/* Subject / Beneficiary (optional) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Priority Level *
+            Subject / Beneficiary (optional)
           </label>
-          <div className="grid grid-cols-3 gap-4">
+          <input
+            type="text"
+            name="subject"
+            value={formData.subject}
+            onChange={handleChange}
+            className={`${inputClass}`}
+            placeholder="e.g. Beneficiary name or short subject"
+          />
+        </div>
+
+        {/* Priority / Severity */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Severity / Priority *
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { value: 'low', label: 'Low', color: 'green' },
               { value: 'medium', label: 'Medium', color: 'yellow' },
-              { value: 'high', label: 'High', color: 'red' }
+              { value: 'high', label: 'High', color: 'red' },
+              { value: 'urgent', label: 'Urgent', color: 'red' }
             ].map((priority) => (
               <button
                 key={priority.value}

@@ -254,6 +254,23 @@ class AdminService {
       throw error;
     }
   }
+
+  // Get all AI health predictions from ASHA worker dashboard (all areas)
+  async getAiHealthAlerts() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/health/ai-alerts`, {
+        method: 'GET',
+        headers: this.getAuthHeaders()
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Failed to fetch AI health alerts');
+      return result;
+    } catch (error) {
+      console.error('Get AI health alerts error:', error);
+      throw error;
+    }
+  }
+
 }
 
 // Create and export a singleton instance

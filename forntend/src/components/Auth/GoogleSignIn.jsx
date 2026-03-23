@@ -20,6 +20,9 @@ const GoogleSignIn = ({ onSuccess, onError, selectedRole, disabled = false }) =>
       if (result.success) {
         console.log('✅ Google Sign-in successful');
         onSuccess(result);
+      } else if (result.redirect) {
+        // Using redirect flow (popup was blocked); page is navigating to Google
+        return;
       } else {
         console.error('❌ Google Sign-in failed:', result);
         onError('Google Sign-in failed. Please try again.');

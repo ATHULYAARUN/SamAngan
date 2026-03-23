@@ -260,6 +260,12 @@ const pregnantWomanSchema = new mongoose.Schema({
     trim: true
   },
   
+  // Link to User account
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  
   notes: {
     type: String,
     trim: true,
@@ -300,6 +306,7 @@ pregnantWomanSchema.virtual('gestationalAge').get(function() {
 });
 
 // Index for efficient queries
+pregnantWomanSchema.index({ userId: 1 });
 pregnantWomanSchema.index({ anganwadiCenter: 1, status: 1 });
 pregnantWomanSchema.index({ phone: 1 });
 pregnantWomanSchema.index({ expectedDeliveryDate: 1 });

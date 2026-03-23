@@ -25,6 +25,8 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import NavigationGuard from './components/NavigationGuard';
+import ConnectionStatus from './components/ConnectionStatus';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Import session management
 import sessionManager from './utils/sessionManager';
@@ -69,6 +71,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
+      <ConnectionStatus />
       {/* Navigation Guard for session protection */}
       <NavigationGuard />
       
@@ -190,9 +193,11 @@ function AppContent() {
             </ProtectedRoute>
           } />
           <Route path="/asha-dashboard" element={
-            <ProtectedRoute allowedRoles={['asha-volunteer']}>
-              <ASHADashboard />
-            </ProtectedRoute>
+            <ErrorBoundary>
+              <ProtectedRoute allowedRoles={['asha-volunteer']}>
+                <ASHADashboard />
+              </ProtectedRoute>
+            </ErrorBoundary>
           } />
           <Route path="/parent-dashboard" element={
             <ProtectedRoute allowedRoles={['parent']}>

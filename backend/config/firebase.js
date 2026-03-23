@@ -74,7 +74,12 @@ const verifyFirebaseToken = async (idToken) => {
     const decodedToken = await auth.verifyIdToken(idToken);
     return decodedToken;
   } catch (error) {
-    console.error('Firebase token verification error:', error);
+    // Do not log when token is not a Firebase ID token (e.g. JWT from backend) - expected when using authToken
+    const isNotFirebaseToken = error.code === 'auth/argument-error' ||
+      (error.message && (error.message.includes('kid') || error.message.includes('ID token')));
+    if (!isNotFirebaseToken) {
+      console.error('Firebase token verification error:', error.message || error);
+    }
     throw new Error('Invalid Firebase token');
   }
 };

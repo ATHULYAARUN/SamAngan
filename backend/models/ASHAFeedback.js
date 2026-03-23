@@ -24,7 +24,7 @@ const ashaFeedbackSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Feedback type is required'],
     enum: {
-      values: ['health', 'sanitation', 'nutrition', 'infrastructure', 'other'],
+      values: ['health', 'sanitation', 'nutrition', 'infrastructure', 'high_risk_pregnancy', 'severe_anemia', 'child_malnutrition', 'vaccine_delay', 'other'],
       message: 'Invalid feedback type'
     }
   },

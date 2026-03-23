@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Baby, Menu, X } from 'lucide-react';
 
@@ -7,6 +7,7 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navItems = [
     { name: 'Home', path: '/' },
@@ -94,19 +95,19 @@ const Navbar = () => {
 
           {/* Desktop Auth Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link to="/login">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className={`btn btn-ghost font-medium ${
-                  scrolled 
-                    ? 'text-dark-700 hover:bg-primary-50 hover:text-primary-600' 
-                    : 'text-white hover:bg-white/10'
-                }`}
-              >
-                Login
-              </motion.button>
-            </Link>
+            <motion.button
+              type="button"
+              onClick={() => navigate('/login')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`btn btn-ghost font-medium ${
+                scrolled 
+                  ? 'text-dark-700 hover:bg-primary-50 hover:text-primary-600' 
+                  : 'text-white hover:bg-white/10'
+              }`}
+            >
+              Login
+            </motion.button>
             <Link to="/register">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -170,15 +171,18 @@ const Navbar = () => {
               ))}
               
               <div className="pt-4 space-y-2">
-                <Link to="/login" className="block">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full btn btn-ghost justify-start"
-                  >
-                    Login
-                  </motion.button>
-                </Link>
+                <motion.button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate('/login');
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full btn btn-ghost justify-start"
+                >
+                  Login
+                </motion.button>
                 <Link to="/register" className="block">
                   <motion.button
                     whileHover={{ scale: 1.02 }}

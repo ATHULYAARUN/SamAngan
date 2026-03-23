@@ -37,48 +37,53 @@ const HealthGrowthMonitoring = ({ anganwadiCenter = "Akkarakunnu Anganwadi" }) =
     specialNeeds: ''
   });
 
-  // Load health data
+  // Load health data (try registration API first, then health API as fallback for same center)
   const loadHealthData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       console.log('🏥 Loading health data for:', anganwadiCenter);
 
-      // For now, directly use registration service since authentication is working there
-      console.log('🔄 Using registration service for health data...');
-      
-      const childrenResponse = await registrationService.getChildren({
-        anganwadiCenter: anganwadiCenter,
-        status: 'active',
-        limit: 50
-      });
-      
-      const children = childrenResponse.data?.children || [];
-      const formattedData = healthService.formatHealthDataForDisplay(children);
-      setHealthData(formattedData);
-      
-      console.log('✅ Health data loaded successfully from registration service');
+      let children = [];
 
-      // Load vaccination schedule using the same children data
-      console.log('💉 Generating vaccination schedule from children data...');
-      const formattedSchedule = healthService.formatVaccinationSchedule(children);
-      setVaccinationSchedule(formattedSchedule);
-      console.log('✅ Vaccination schedule generated successfully');
+      try {
+        const childrenResponse = await registrationService.getChildren({
+          anganwadiCenter,
+          status: 'active',
+          limit: 50
+        });
+        children = childrenResponse?.data?.children || [];
+      } catch (regErr) {
+        console.warn('Registration service getChildren failed, trying health API:', regErr.message);
+      }
 
+      if (children.length === 0) {
+        try {
+          const healthResponse = await healthService.getChildrenHealthData(anganwadiCenter);
+          const raw = healthResponse?.data?.children ?? healthResponse?.children ?? [];
+          children = Array.isArray(raw) ? raw : [];
+        } catch (healthErr) {
+          console.warn('Health API getChildren failed:', healthErr.message);
+        }
+      }
+
+      if (children.length === 0) {
+        setHealthData([]);
+        setVaccinationSchedule([]);
+        setError(null);
+        console.log('No children found for center:', anganwadiCenter);
+      } else {
+        const formattedData = healthService.formatHealthDataForDisplay(children);
+        setHealthData(formattedData);
+        const formattedSchedule = healthService.formatVaccinationSchedule(children);
+        setVaccinationSchedule(formattedSchedule);
+        setError(null);
+        console.log('✅ Health data loaded:', formattedData.length, 'children');
+      }
     } catch (err) {
       console.error('❌ Failed to load health data:', err);
-      
-      // Provide specific error messages based on error type
-      let errorMessage = 'Failed to load health data. Please try again.';
-      
-      if (err.isJSONError) {
-        errorMessage = 'Server response error. The server may be returning invalid data format.';
-      } else if (err.isNetworkError) {
-        errorMessage = 'Network error. Please check if the server is running and try again.';
-      } else if (err.message?.includes('Invalid response format')) {
-        errorMessage = err.message;
-      }
-      
+      let errorMessage = err?.message || 'Failed to load health data. Please try again.';
+      if (err?.message?.includes('Invalid response format')) errorMessage = err.message;
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -342,7 +347,8 @@ const HealthGrowthMonitoring = ({ anganwadiCenter = "Akkarakunnu Anganwadi" }) =
               <div className="text-center py-8 text-gray-500">
                 <Stethoscope className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                 <p>No children found for health monitoring</p>
-                <p className="text-sm">Register children first to track their health</p>
+                <p className="text-sm mt-1">Center: <strong className="text-gray-700">{anganwadiCenter}</strong></p>
+                <p className="text-sm mt-2">Register children at this center first, or use Refresh once the backend is connected.</p>
               </div>
             )}
           </div>

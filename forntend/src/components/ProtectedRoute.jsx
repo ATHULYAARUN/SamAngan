@@ -88,6 +88,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
       'asha-volunteer': '/asha-dashboard',
       'parent': '/parent-dashboard',
       'adolescent-girl': '/adolescent-dashboard',
+      'pregnant-woman': '/pregnant-woman-dashboard',
       'sanitation-worker': '/sanitation-dashboard'
     };
 

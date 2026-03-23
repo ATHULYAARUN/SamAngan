@@ -3,23 +3,25 @@ import { auth } from '../config/firebase';
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class RegistrationService {
-  // Helper method to get auth headers
+  // Helper method to get auth headers (Firebase token or direct-login authToken so dashboard works for all workers)
   async getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
     try {
       const user = auth.currentUser;
-      if (!user) {
-        throw new Error('User not authenticated');
+      if (user) {
+        const idToken = await user.getIdToken();
+        headers['Authorization'] = `Bearer ${idToken}`;
+        return headers;
       }
-      
-      const idToken = await user.getIdToken();
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      };
-    } catch (error) {
-      console.error('Error getting auth headers:', error);
-      throw new Error('Authentication failed');
+    } catch (e) {
+      console.warn('Firebase token not available, using stored token if any');
     }
+    const token = localStorage.getItem('authToken') || localStorage.getItem('adminToken') || localStorage.getItem('firebaseToken');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      return headers;
+    }
+    throw new Error('User not authenticated');
   }
 
   // Helper method to handle API responses

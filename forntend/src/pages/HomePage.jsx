@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Baby, 
   Heart, 
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 const HomePage = () => {
+  const navigate = useNavigate();
   const features = [
     {
       icon: Baby,
@@ -136,16 +137,25 @@ const HomePage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
-                className="flex flex-col sm:flex-row gap-6 pt-4"
+                className="flex flex-col sm:flex-row gap-4 pt-4"
               >
-                <Link to="/register">
-                  <button className="group bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-3">
-                    <span className="text-lg">Get Started Free</span>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
-                  </button>
+                <Link 
+                  to="/register"
+                  className="group bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-3 cursor-pointer no-underline"
+                >
+                  <span className="text-lg">Get Started Free</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
                 </Link>
+
+                <button 
+                  onClick={() => navigate('/login')}
+                  className="group bg-white border-2 border-primary-400 hover:border-primary-600 text-primary-600 hover:text-primary-700 font-semibold px-10 py-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-3 cursor-pointer"
+                >
+                  <span className="text-lg">Login</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
+                </button>
                 
-                <button className="group bg-white border-2 border-gray-200 hover:border-primary-300 text-black font-semibold px-10 py-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-3">
+                <button type="button" className="group bg-white border-2 border-gray-200 hover:border-primary-300 text-black font-semibold px-10 py-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-3 cursor-pointer">
                   <Play className="w-5 h-5 text-primary-600 group-hover:text-primary-700 transition-colors duration-300" />
                   <span className="text-lg">Watch Demo</span>
                 </button>

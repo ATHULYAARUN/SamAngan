@@ -4,6 +4,19 @@ const Attendance = require('../models/Attendance');
 const Child = require('../models/Child');
 const { verifyFlexibleAuth } = require('../middleware/auth');
 
+// Build filter so "Akkarakunnu" and "Akkarakkunnu" (and optional " Center") all match the same children
+function centerFilterFor(anganwadiCenter) {
+  const raw = String(anganwadiCenter || '').trim();
+  const firstWord = raw.split(/\s+/)[0] || '';
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const variants = [firstWord];
+  const singleK = firstWord.replace(/kk/g, 'k');
+  if (singleK !== firstWord) variants.push(singleK);
+  return variants.length > 1
+    ? { $or: variants.map((v) => ({ anganwadiCenter: new RegExp(escape(v), 'i') })) }
+    : { anganwadiCenter: new RegExp(escape(firstWord), 'i') };
+}
+
 // Get today's attendance for an anganwadi center
 router.get('/today/:anganwadiCenter', verifyFlexibleAuth, async (req, res) => {
   try {
@@ -13,14 +26,16 @@ router.get('/today/:anganwadiCenter', verifyFlexibleAuth, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Get all children from this anganwadi center
-    const children = await Child.find({ anganwadiCenter: anganwadiCenter })
+    const centerFilter = centerFilterFor(anganwadiCenter);
+
+    // Get all children from this anganwadi center (flexible match)
+    const children = await Child.find(centerFilter)
       .select('name dateOfBirth gender parentName parentPhone')
       .sort({ name: 1 });
 
-    // Get today's attendance records
+    // Get today's attendance records (same flexible center match)
     const attendanceRecords = await Attendance.find({
-      anganwadiCenter: anganwadiCenter,
+      ...centerFilter,
       date: {
         $gte: today,
         $lt: tomorrow
@@ -95,8 +110,9 @@ router.get('/test/:anganwadiCenter', async (req, res) => {
   try {
     const { anganwadiCenter } = req.params;
     console.log('🧪 Test route called for:', anganwadiCenter);
-    
-    const children = await Child.find({ anganwadiCenter: anganwadiCenter })
+
+    const centerFilter = centerFilterFor(anganwadiCenter);
+    const children = await Child.find(centerFilter)
       .select('name dateOfBirth gender')
       .limit(5);
     
@@ -216,16 +232,13 @@ router.post('/bulk-mark', verifyFlexibleAuth, async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const currentTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
-    // Get children to mark attendance for
+    // Get children to mark attendance for (use same flexible center match as GET /today)
+    const centerFilter = centerFilterFor(anganwadiCenter);
     let children;
     if (childIds && childIds.length > 0) {
-      children = await Child.find({ 
-        _id: { $in: childIds },
-        anganwadiCenter: anganwadiCenter 
-      }).select('name');
+      children = await Child.find({ _id: { $in: childIds }, ...centerFilter }).select('name');
     } else {
-      // Mark all children from the anganwadi center
-      children = await Child.find({ anganwadiCenter: anganwadiCenter }).select('name');
+      children = await Child.find(centerFilter).select('name');
     }
 
     const bulkOperations = [];

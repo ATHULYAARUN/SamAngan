@@ -18,15 +18,14 @@ import {
   Baby,
   Syringe,
   Stethoscope,
-  Target,
   Brain,
   FileText,
-  CheckCircle,
   Clock,
   XCircle
 } from 'lucide-react';
 
 import HealthChartsWorking from './health/HealthChartsWorking';
+import adminService from '../../services/adminService';
 
 const HealthMonitoringSimple = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -38,6 +37,9 @@ const HealthMonitoringSimple = () => {
   });
   const [healthData, setHealthData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [aiAlerts, setAiAlerts] = useState([]);
+  const [aiAlertsLoading, setAiAlertsLoading] = useState(true);
+  const [aiAlertsError, setAiAlertsError] = useState(null);
 
   // Mock data - different data for different centers and categories
   const getAllHealthData = () => {
@@ -442,6 +444,31 @@ const HealthMonitoringSimple = () => {
     setIsRefreshing(false);
   };
 
+  const loadAiAlerts = async () => {
+    setAiAlertsLoading(true);
+    setAiAlertsError(null);
+    try {
+      const res = await adminService.getAiHealthAlerts();
+      setAiAlerts(Array.isArray(res?.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to load AI health alerts:', err);
+      setAiAlertsError(err?.message || 'Failed to load AI predictions');
+      setAiAlerts([]);
+    } finally {
+      setAiAlertsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAiAlerts();
+  }, []);
+
+  const aiAlertRiskColor = (level) => {
+    if (level === 'High') return 'bg-red-100 border-red-200 text-red-800';
+    if (level === 'Moderate') return 'bg-amber-100 border-amber-200 text-amber-800';
+    return 'bg-gray-100 border-gray-200 text-gray-800';
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -594,110 +621,73 @@ const HealthMonitoringSimple = () => {
           <HealthChartsWorking filters={filters} />
         </div>
 
-        {/* Alerts Panel */}
-        <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-red-500" />
-              Recent Health Alerts
-            </h3>
-            <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-              {healthData?.alerts?.length || 0} Active
-            </span>
+        {/* AI Health Predictions */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+            <div className="flex items-center gap-3">
+              <Brain className="w-6 h-6 text-purple-600" />
+              <h3 className="text-lg font-semibold text-gray-900">AI Health Predictions</h3>
+            </div>
+            <button
+              type="button"
+              onClick={loadAiAlerts}
+              disabled={aiAlertsLoading}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm font-medium text-gray-700"
+            >
+              <RefreshCw className={`w-4 h-4 ${aiAlertsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
-
-          <div className="space-y-4">
-            {healthData?.alerts?.map((alert) => (
-              <div key={alert.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className={`w-3 h-3 rounded-full ${
-                    alert.type === 'critical' ? 'bg-red-500' : 
-                    alert.type === 'warning' ? 'bg-orange-500' : 'bg-blue-500'
-                  }`}></div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">{alert.title}</h4>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-4 h-4" />
-                        {alert.center}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {alert.time}
-                      </span>
+          <p className="text-sm text-gray-600 mb-4">
+            Pregnancy risk, child malnutrition, and adolescent anemia alerts derived from ASHA field visit data across all areas.
+          </p>
+          {aiAlertsError && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">{aiAlertsError}</div>
+          )}
+          {aiAlertsLoading ? (
+            <div className="py-8 text-center text-gray-500">Loading AI health predictions...</div>
+          ) : aiAlerts.length === 0 ? (
+            <div className="py-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+              No AI health predictions at the moment. Alerts appear when ASHA field visit data indicates pregnancy risk, child malnutrition, or adolescent anemia.
+            </div>
+          ) : (
+            <div className="space-y-4 max-h-[420px] overflow-y-auto">
+              {aiAlerts.map((alert) => (
+                <div
+                  key={alert.id?.toString() || Math.random()}
+                  className={`rounded-lg border-2 p-4 ${aiAlertRiskColor(alert.riskLevel)}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/80 flex items-center justify-center">
+                      {alert.type === 'pregnancy_risk' ? (
+                        <Heart className="w-5 h-5 text-red-600" />
+                      ) : (
+                        <Baby className="w-5 h-5 text-amber-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900">{alert.title}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${aiAlertRiskColor(alert.riskLevel)}`}>
+                          {alert.riskLevel}
+                        </span>
+                        {alert.ashaArea && (
+                          <span className="text-xs text-gray-600">• {alert.ashaArea}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700"><strong>Reason:</strong> {alert.reason}</p>
+                      <p className="text-sm text-gray-700 mt-1"><strong>Action:</strong> {alert.action}</p>
+                      <p className="text-xs text-gray-600 mt-2">
+                        Beneficiary: {alert.beneficiaryName} • {alert.date ? new Date(alert.date).toLocaleDateString() : '—'}
+                      </p>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    alert.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                  }`}>
-                    {alert.status}
-                  </span>
-                  <button className="p-1 text-gray-400 hover:text-gray-600">
-                    <Eye className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )) || (
-              <div className="text-center py-8 text-gray-500">
-                <Bell className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No active alerts</p>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* AI Insights */}
-        <div className="bg-gradient-to-r from-purple-500 to-blue-600 rounded-xl p-6 text-white mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <Brain className="w-6 h-6" />
-            <h3 className="text-lg font-semibold">AI Health Insights</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white/10 rounded-lg p-4">
-              <h4 className="font-medium mb-2">Malnutrition Prediction</h4>
-              <p className="text-sm opacity-90">Expected 15% increase in cases next month</p>
-              <div className="text-xs mt-2 opacity-75">Confidence: 87%</div>
-            </div>
-            <div className="bg-white/10 rounded-lg p-4">
-              <h4 className="font-medium mb-2">Immunization Focus</h4>
-              <p className="text-sm opacity-90">Ward 3 needs immediate attention</p>
-              <div className="text-xs mt-2 opacity-75">Confidence: 92%</div>
-            </div>
-            <div className="bg-white/10 rounded-lg p-4">
-              <h4 className="font-medium mb-2">Resource Allocation</h4>
-              <p className="text-sm opacity-90">Increase anemia screening in Ward 5</p>
-              <div className="text-xs mt-2 opacity-75">Confidence: 81%</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Debug Information */}
-        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-          <h3 className="text-lg font-semibold text-blue-800 mb-4">Component Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span>Component loaded successfully</span>
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span>Mock data displayed</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span>All sections rendering</span>
-              </div>
-            </div>
-            <div className="text-blue-700">
-              <div>Last updated: {lastUpdated.toLocaleString()}</div>
-              <div>Component: HealthMonitoringSimple</div>
-              <div>Status: Active</div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

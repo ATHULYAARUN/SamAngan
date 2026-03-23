@@ -488,12 +488,15 @@ const RegisterPage = () => {
         phone: formData.phone,
         anganwadiName: formData.anganwadiName || '',
         address: {
-          street: formData.address?.street || formData.location || '',
+          street: formData.address?.street || formData.address?.house || formData.location || '',
+          house: formData.address?.house || '',
           city: formData.address?.city || '',
+          village: formData.address?.village || formData.address?.ward || '',
+          ward: formData.address?.ward || '',
           state: formData.address?.state || '',
           pincode: formData.address?.pincode || formData.pincode || '',
-          district: '',
-          block: '',
+          district: formData.address?.district || '',
+          block: formData.address?.block || '',
         },
         roleSpecificData: getRoleSpecificData()
       };
@@ -565,6 +568,7 @@ const RegisterPage = () => {
       case 'pregnant-woman':
         return {
           pregnantWomanDetails: {
+            dateOfBirth: formData.dateOfBirth || '',
             husbandName: formData.husbandName || '',
             husbandPhone: formData.husbandPhone || '',
             lastMenstrualPeriod: formData.lastMenstrualPeriod || '',
@@ -653,6 +657,15 @@ const RegisterPage = () => {
           // Remove extra children entries
           newFormData.children = currentChildren.slice(0, numChildren);
         }
+      }
+      
+      // Auto-calculate EDD from LMP for pregnant women
+      if (name === 'lastMenstrualPeriod' && formattedValue) {
+        const lmpDate = new Date(formattedValue);
+        // Add 280 days (40 weeks) to LMP to get EDD
+        const eddDate = new Date(lmpDate.getTime() + (280 * 24 * 60 * 60 * 1000));
+        const eddString = eddDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+        newFormData.expectedDeliveryDate = eddString;
       }
       
       setFormData(newFormData);
@@ -1196,6 +1209,7 @@ const RegisterPage = () => {
                       required
                     />
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">This will automatically calculate your Expected Delivery Date</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-black mb-2">Expected Delivery Date</label>
@@ -1206,9 +1220,12 @@ const RegisterPage = () => {
                       name="expectedDeliveryDate"
                       value={formData.expectedDeliveryDate}
                       onChange={handleChange}
-                      className={inputClass}
+                      className={`${inputClass} bg-gray-50`}
+                      readOnly
+                      placeholder="Auto-calculated from LMP"
                     />
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Automatically calculated from Last Menstrual Period (280 days)</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-black mb-2">Pregnancy Number</label>

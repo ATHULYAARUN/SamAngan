@@ -3,6 +3,20 @@ const router = express.Router();
 const Child = require('../models/Child');
 const { verifyFlexibleAuth } = require('../middleware/auth');
 
+// Match center by first word so "Akkarakunnu Anganwadi" matches "Akkarakunnu Anganwadi Center"
+function centerFilterFor(anganwadiCenter) {
+  const raw = String(anganwadiCenter || '').trim();
+  if (!raw) return {};
+  const firstWord = raw.split(/\s+/)[0] || '';
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const variants = [firstWord];
+  const singleK = firstWord.replace(/kk/g, 'k');
+  if (singleK !== firstWord) variants.push(singleK);
+  return variants.length > 1
+    ? { $or: variants.map((v) => ({ anganwadiCenter: new RegExp(escape(v), 'i') })) }
+    : { anganwadiCenter: new RegExp(escape(firstWord), 'i') };
+}
+
 // Get children health data for an Anganwadi center
 router.get('/children', verifyFlexibleAuth, async (req, res) => {
   try {
@@ -17,11 +31,8 @@ router.get('/children', verifyFlexibleAuth, async (req, res) => {
       });
     }
 
-    // Find all active children in the specified center
-    const children = await Child.find({
-      anganwadiCenter: anganwadiCenter,
-      status: 'active'
-    }).select(
+    const centerFilter = { ...centerFilterFor(anganwadiCenter), status: 'active' };
+    const children = await Child.find(centerFilter).select(
       'name dateOfBirth gender currentWeight currentHeight bloodGroup ' +
       'nutritionStatus vaccinations medicalHistory specialNeeds updatedAt ' +
       'parentName parentPhone'
@@ -227,10 +238,8 @@ router.get('/statistics', verifyFlexibleAuth, async (req, res) => {
       });
     }
 
-    const children = await Child.find({
-      anganwadiCenter: anganwadiCenter,
-      status: 'active'
-    });
+    const centerFilter = { ...centerFilterFor(anganwadiCenter), status: 'active' };
+    const children = await Child.find(centerFilter);
 
     // Calculate statistics
     const totalChildren = children.length;

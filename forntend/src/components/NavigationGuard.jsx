@@ -20,6 +20,7 @@ const NavigationGuard = () => {
         '/asha-dashboard',
         '/parent-dashboard',
         '/adolescent-dashboard',
+        '/pregnant-woman-dashboard',
         '/sanitation-dashboard'
       ];
 
@@ -56,6 +57,7 @@ const NavigationGuard = () => {
         '/asha-dashboard', 
         '/parent-dashboard',
         '/adolescent-dashboard',
+        '/pregnant-woman-dashboard',
         '/sanitation-dashboard'
       ];
 

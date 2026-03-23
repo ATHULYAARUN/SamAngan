@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,8 @@ import AWWProfile from '../components/Profile/AWWProfile';
 import registrationService from '../services/registrationService';
 import authService from '../services/authService';
 import reportsService from '../services/reportsService';
+import attendanceService from '../services/attendanceService';
+import healthService from '../services/healthService';
 import sessionManager from '../utils/sessionManager';
 import { 
   Baby, 
@@ -37,11 +39,26 @@ const AWWDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showRegistrationForm, setShowRegistrationForm] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
+  // Enrolled children count for this center (fetched from API; used in Nutrition)
+  const [enrolledChildrenCount, setEnrolledChildrenCount] = useState(5);
+
+  // Real dashboard stats (loaded from API)
+  const [dashboardStats, setDashboardStats] = useState({
+    children: 0,
+    pregnantWomen: 0,
+    adolescents: 0,
+    attendancePresent: 0,
+    attendanceTotal: 0,
+    nutritionToday: 0,
+    pendingVaccinations: 0,
+    loading: true
+  });
+
   // Nutrition state management
   const [nutritionData, setNutritionData] = useState({
-    todayDistribution: 45,
-    totalChildren: 45,
+    todayDistribution: 0,
+    totalChildren: 5,
     weeklyMenu: {
       // Week 1
       'Week1-Monday': {
@@ -181,11 +198,11 @@ const AWWDashboard = () => {
   const [showStockModal, setShowStockModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportForm, setReportForm] = useState({
-    attendancePresent: 38,
-    attendanceTotal: 45,
-    nutritionDistributed: 45,
-    healthCheckups: 8,
-    vaccinations: 3,
+    attendancePresent: 0,
+    attendanceTotal: 0,
+    nutritionDistributed: 0,
+    healthCheckups: 0,
+    vaccinations: 0,
     notes: '',
     file: null,
   });
@@ -240,6 +257,8 @@ const AWWDashboard = () => {
 
       await registrationService.registerChild(childData);
       setShowRegistrationForm(null);
+      loadEnrolledChildrenCount();
+      loadDashboardStats();
       alert('Child registered successfully!');
     } catch (error) {
       console.error('Registration error:', error);
@@ -254,6 +273,7 @@ const AWWDashboard = () => {
       setIsLoading(true);
       await registrationService.registerPregnantWoman(womanData);
       setShowRegistrationForm(null);
+      loadDashboardStats();
       alert('Pregnant woman registered successfully!');
     } catch (error) {
       console.error('Registration error:', error);
@@ -268,6 +288,7 @@ const AWWDashboard = () => {
       setIsLoading(true);
       await registrationService.registerAdolescent(adolescentData);
       setShowRegistrationForm(null);
+      loadDashboardStats();
       alert('Adolescent registered successfully!');
     } catch (error) {
       console.error('Registration error:', error);
@@ -291,43 +312,46 @@ const AWWDashboard = () => {
     }
   };
 
-  // AWW Dashboard Stats - Day-to-day data entry and local management
+  // AWW Dashboard Stats - real values from API
+  const attRate = dashboardStats.attendanceTotal > 0
+    ? Math.round((dashboardStats.attendancePresent / dashboardStats.attendanceTotal) * 100)
+    : 0;
   const stats = [
     {
       title: 'Registered Children',
-      value: '45',
-      change: '+3 this month',
+      value: String(dashboardStats.loading ? '...' : dashboardStats.children),
+      change: 'Total under care',
       icon: Baby,
       color: 'blue',
       description: 'Total children under care'
     },
     {
       title: 'Pregnant Women',
-      value: '12',
-      change: '+2 this month',
+      value: String(dashboardStats.loading ? '...' : dashboardStats.pregnantWomen),
+      change: 'Active pregnancies',
       icon: Heart,
       color: 'pink',
       description: 'Active pregnancies monitored'
     },
     {
       title: 'Adolescents',
-      value: '18',
-      change: '+1 this month',
+      value: String(dashboardStats.loading ? '...' : dashboardStats.adolescents),
+      change: 'Girls 10-19 years',
       icon: Users,
       color: 'purple',
       description: 'Girls aged 10-19 years'
     },
     {
       title: 'Daily Attendance',
-      value: '38/45',
-      change: '84% today',
+      value: dashboardStats.loading ? '...' : `${dashboardStats.attendancePresent}/${dashboardStats.attendanceTotal}`,
+      change: attRate ? `${attRate}% today` : 'Today',
       icon: Calendar,
       color: 'green',
       description: 'Children present today'
     },
     {
       title: 'Nutrition Distributed',
-      value: '45',
+      value: String(dashboardStats.loading ? '...' : dashboardStats.nutritionToday),
       change: 'Today',
       icon: Utensils,
       color: 'orange',
@@ -335,8 +359,8 @@ const AWWDashboard = () => {
     },
     {
       title: 'Pending Vaccinations',
-      value: '8',
-      change: 'Due this week',
+      value: String(dashboardStats.loading ? '...' : dashboardStats.pendingVaccinations),
+      change: 'Due',
       icon: Stethoscope,
       color: 'red',
       description: 'Children requiring vaccination'
@@ -347,32 +371,32 @@ const AWWDashboard = () => {
     {
       id: 1,
       type: 'registration',
-      message: 'New child registered - Aarav Kumar (2 years)',
-      time: '30 minutes ago',
+      message: `Total ${dashboardStats.children} children registered at your center`,
+      time: 'Overview',
       icon: Baby,
       priority: 'medium'
     },
     {
       id: 2,
       type: 'nutrition',
-      message: 'Nutrition distribution completed for 45 children',
-      time: '2 hours ago',
+      message: `Nutrition distributed today for ${dashboardStats.nutritionToday} children`,
+      time: 'Today',
       icon: Utensils,
       priority: 'low'
     },
     {
       id: 3,
       type: 'health',
-      message: 'Growth monitoring completed for 15 children',
-      time: '3 hours ago',
+      message: `Daily attendance: ${dashboardStats.attendancePresent}/${dashboardStats.attendanceTotal} present`,
+      time: 'Today',
       icon: Scale,
       priority: 'medium'
     },
     {
       id: 4,
       type: 'vaccination',
-      message: 'Vaccination due alert for 8 children',
-      time: '4 hours ago',
+      message: `Vaccination due for ${dashboardStats.pendingVaccinations} (doses/reminders)`,
+      time: 'Check Health tab',
       icon: Stethoscope,
       priority: 'high'
     },
@@ -380,11 +404,89 @@ const AWWDashboard = () => {
       id: 5,
       type: 'waste',
       message: 'Waste collection logged for newborn care area',
-      time: '5 hours ago',
+      time: 'When logged',
       icon: Activity,
       priority: 'low'
     }
   ];
+
+  const getAnganwadiCenter = useCallback(() =>
+    sessionManager.getUserData()?.roleSpecificData?.anganwadiCenter?.name ||
+    localStorage.getItem('anganwadiCenter') ||
+    localStorage.getItem('userAnganwadiCenter') ||
+    sessionStorage.getItem('anganwadiCenter') ||
+    'Akkarakunnu Anganwadi'
+  , []);
+
+  const loadEnrolledChildrenCount = useCallback(() => {
+    const center = getAnganwadiCenter();
+    registrationService.getChildren({ anganwadiCenter: center, status: 'active', limit: 1 })
+      .then((res) => {
+        const total = res?.data?.pagination?.total ?? 5;
+        setEnrolledChildrenCount(total);
+        setNutritionData((prev) => ({ ...prev, totalChildren: total }));
+      })
+      .catch(() => {
+        setNutritionData((prev) => ({ ...prev, totalChildren: 5 }));
+      });
+  }, [getAnganwadiCenter]);
+
+  // Load real dashboard stats (children, pregnant women, adolescents, attendance, nutrition, vaccinations)
+  const loadDashboardStats = useCallback(async () => {
+    const center = getAnganwadiCenter();
+    setDashboardStats((prev) => ({ ...prev, loading: true }));
+    try {
+      const [regStats, attendanceRes, healthStats] = await Promise.all([
+        registrationService.getRegistrationStats(center).catch(() => ({ children: 0, pregnantWomen: 0, adolescents: 0 })),
+        attendanceService.getTodaysAttendance(center).catch(() => null),
+        healthService.getHealthStatistics(center).catch(() => ({ vaccinationsDue: 0 }))
+      ]);
+      const att = attendanceRes?.data;
+      const present = att?.statistics?.present ?? 0;
+      const total = att?.statistics?.total ?? regStats.children ?? 0;
+      const childrenList = att?.children || [];
+      const nutritionToday = Array.isArray(childrenList) ? childrenList.filter((c) => c.nutritionReceived).length : 0;
+      setDashboardStats({
+        children: regStats.children ?? 0,
+        pregnantWomen: regStats.pregnantWomen ?? 0,
+        adolescents: regStats.adolescents ?? 0,
+        attendancePresent: present,
+        attendanceTotal: total,
+        nutritionToday: nutritionToday || present,
+        pendingVaccinations: healthStats.vaccinationsDue ?? 0,
+        loading: false
+      });
+    } catch (err) {
+      console.error('Failed to load dashboard stats:', err);
+      setDashboardStats((prev) => ({ ...prev, loading: false }));
+    }
+  }, [getAnganwadiCenter]);
+
+  useEffect(() => {
+    loadEnrolledChildrenCount();
+  }, [loadEnrolledChildrenCount]);
+
+  // Load dashboard stats on mount and whenever user switches to Dashboard tab (so Daily Attendance and Nutrition Distributed update after marking attendance or logging nutrition)
+  useEffect(() => {
+    if (activeTab === 'overview') loadDashboardStats();
+  }, [activeTab, loadDashboardStats]);
+
+  useEffect(() => {
+    if (activeTab === 'nutrition') loadEnrolledChildrenCount();
+  }, [activeTab, loadEnrolledChildrenCount]);
+
+  // When opening report modal, prefill with current dashboard stats
+  useEffect(() => {
+    if (showReportModal && !dashboardStats.loading) {
+      setReportForm((prev) => ({
+        ...prev,
+        attendancePresent: dashboardStats.attendancePresent,
+        attendanceTotal: dashboardStats.attendanceTotal,
+        nutritionDistributed: dashboardStats.nutritionToday,
+        vaccinations: dashboardStats.pendingVaccinations
+      }));
+    }
+  }, [showReportModal, dashboardStats.loading, dashboardStats.attendancePresent, dashboardStats.attendanceTotal, dashboardStats.nutritionToday, dashboardStats.pendingVaccinations]);
 
   const tabs = [
     { id: 'overview', label: 'Dashboard', icon: Activity },
@@ -392,7 +494,6 @@ const AWWDashboard = () => {
     { id: 'attendance', label: 'Attendance', icon: Calendar },
     { id: 'nutrition', label: 'Nutrition', icon: Utensils },
     { id: 'health', label: 'Health & Growth', icon: Heart },
-    { id: 'waste', label: 'Waste Tracking', icon: TrendingUp },
     { id: 'reports', label: 'Daily Reports', icon: FileText },
     { id: 'profile', label: 'My Profile', icon: User }
   ];
@@ -572,15 +673,14 @@ const AWWDashboard = () => {
   };
 
   const renderAttendance = () => {
-    // Get the anganwadi center from user info or use a default
-    // Try various sources for the center name
-    const anganwadiCenter = localStorage.getItem('anganwadiCenter') || 
-                           localStorage.getItem('userAnganwadiCenter') ||
-                           sessionStorage.getItem('anganwadiCenter') ||
-                           'Akkarakunnu Anganwadi'; // Use the actual center name from database
-    
+    // Prefer worker's assigned center from profile, then stored values, then default (matches children DB)
+    const anganwadiCenter =
+      sessionManager.getUserData()?.roleSpecificData?.anganwadiCenter?.name ||
+      localStorage.getItem('anganwadiCenter') ||
+      localStorage.getItem('userAnganwadiCenter') ||
+      sessionStorage.getItem('anganwadiCenter') ||
+      'Akkarakunnu Anganwadi';
     console.log('🏢 Using anganwadi center for attendance:', anganwadiCenter);
-    
     return <AttendanceManagement anganwadiCenter={anganwadiCenter} />;
   };
 
@@ -808,76 +908,9 @@ const AWWDashboard = () => {
   };
 
   const renderHealth = () => {
-    // Get the anganwadi center from user info or use a default
-    const anganwadiCenter = localStorage.getItem('anganwadiCenter') || 
-                           localStorage.getItem('userAnganwadiCenter') ||
-                           sessionStorage.getItem('anganwadiCenter') ||
-                           'Akkarakunnu Anganwadi'; // Use the actual center name from database
-    
-    console.log('🏥 Using anganwadi center for health monitoring:', anganwadiCenter);
-    
+    const anganwadiCenter = getAnganwadiCenter();
     return <HealthGrowthMonitoring anganwadiCenter={anganwadiCenter} />;
   };
-
-  const renderWasteTracking = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">Waste Collection Tracking</h2>
-      
-      <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-        <h3 className="text-lg font-semibold text-black mb-4">Newborn-Related Waste Collection</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Today's Collection Log</h4>
-            <div className="space-y-3">
-              {[
-                { area: 'Delivery Room', time: '09:00 AM', status: 'completed' },
-                { area: 'Newborn Care Area', time: '11:30 AM', status: 'completed' },
-                { area: 'Mother Care Unit', time: '02:00 PM', status: 'pending' }
-              ].map((log, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-black">{log.area}</p>
-                    <p className="text-sm text-gray-600">{log.time}</p>
-                  </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    log.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {log.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Quick Actions</h4>
-            <div className="space-y-3">
-              <button className="w-full bg-blue-50 text-blue-600 py-3 px-4 rounded-lg hover:bg-blue-100 text-left">
-                <div className="flex items-center">
-                  <Plus className="w-5 h-5 mr-3" />
-                  <div>
-                    <p className="font-medium">Log Waste Collection</p>
-                    <p className="text-sm opacity-75">Record new collection activity</p>
-                  </div>
-                </div>
-              </button>
-              
-              <button className="w-full bg-orange-50 text-orange-600 py-3 px-4 rounded-lg hover:bg-orange-100 text-left">
-                <div className="flex items-center">
-                  <Bell className="w-5 h-5 mr-3" />
-                  <div>
-                    <p className="font-medium">Request Collection</p>
-                    <p className="text-sm opacity-75">Alert sanitation team</p>
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   const renderReports = () => (
     <div className="space-y-6">
@@ -897,19 +930,19 @@ const AWWDashboard = () => {
             <div className="space-y-3">
               <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Children Attendance</span>
-                <span className="font-medium text-black">38/45</span>
+                <span className="font-medium text-black">{dashboardStats.attendancePresent}/{dashboardStats.attendanceTotal}</span>
               </div>
               <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Nutrition Distributed</span>
-                <span className="font-medium text-black">45</span>
+                <span className="font-medium text-black">{dashboardStats.nutritionToday}</span>
               </div>
               <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Health Checkups</span>
-                <span className="font-medium text-black">8</span>
+                <span className="font-medium text-black">{dashboardStats.attendancePresent}</span>
               </div>
               <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Vaccinations</span>
-                <span className="font-medium text-black">3</span>
+                <span className="text-gray-600">Vaccinations Pending</span>
+                <span className="font-medium text-black">{dashboardStats.pendingVaccinations}</span>
               </div>
             </div>
           </div>
@@ -1015,8 +1048,6 @@ const AWWDashboard = () => {
         return renderNutrition();
       case 'health':
         return renderHealth();
-      case 'waste':
-        return renderWasteTracking();
       case 'reports':
         return renderReports();
       case 'profile':

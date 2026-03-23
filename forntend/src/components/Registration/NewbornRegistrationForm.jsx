@@ -71,8 +71,60 @@ const NewbornRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
 
   const [errors, setErrors] = useState({});
 
+  // Phone number validation function
+  const validatePhoneNumber = (phone) => {
+    // Remove any non-digit characters
+    const cleanPhone = phone.replace(/\D/g, '');
+    
+    // Check if exactly 10 digits
+    if (cleanPhone.length !== 10) return false;
+    
+    // Check for more than 2 consecutive zeros
+    if (/000/.test(cleanPhone)) return false;
+    
+    // Check if all digits are the same (invalid)
+    if (/^(\d)\1{9}$/.test(cleanPhone)) return false;
+    
+    // Check for invalid patterns (all zeros, starting with 0-5)
+    if (cleanPhone.startsWith('0') || cleanPhone.startsWith('1') || cleanPhone.startsWith('2') || 
+        cleanPhone.startsWith('3') || cleanPhone.startsWith('4') || cleanPhone.startsWith('5')) return false;
+    
+    return true;
+  };
+
+  // Phone number input handler
+  const handlePhoneChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Only allow digits, block letters and special characters
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const truncatedPhone = digitsOnly.slice(0, 10);
+    
+    // Update form data
+    setFormData(prev => ({
+      ...prev,
+      [name]: truncatedPhone
+    }));
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
+    // Use special handler for phone fields
+    if (name === 'motherPhone' || name === 'fatherPhone') {
+      handlePhoneChange(e);
+      return;
+    }
     
     if (name.includes('.')) {
       const parts = name.split('.');
@@ -144,10 +196,17 @@ const NewbornRegistrationForm = ({ onSubmit, onCancel, isLoading = false }) => {
     if (!formData.measurements.birthWeight) newErrors['measurements.birthWeight'] = 'Birth weight is required';
     if (!formData.measurements.birthLength) newErrors['measurements.birthLength'] = 'Birth length is required';
 
-    // Validate phone number
-    const phoneRegex = /^(\+91\s?)?[0-9]{10}$/;
-    if (formData.motherPhone && !phoneRegex.test(formData.motherPhone)) {
-      newErrors.motherPhone = 'Please enter a valid phone number';
+    // Validate phone numbers with enhanced validation
+    if (formData.motherPhone) {
+      if (!validatePhoneNumber(formData.motherPhone)) {
+        newErrors.motherPhone = 'Please enter a valid 10-digit phone number (no consecutive zeros, must start with 6-9)';
+      }
+    }
+
+    if (formData.fatherPhone && formData.fatherPhone.trim()) {
+      if (!validatePhoneNumber(formData.fatherPhone)) {
+        newErrors.fatherPhone = 'Please enter a valid 10-digit phone number (no consecutive zeros, must start with 6-9)';
+      }
     }
 
     // Validate date of birth (should be within 6 weeks)

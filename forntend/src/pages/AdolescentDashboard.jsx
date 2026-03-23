@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -19,10 +19,60 @@ import {
 } from 'lucide-react';
 import authService from '../services/authService';
 import sessionManager from '../utils/sessionManager';
+import ashaService from '../services/ashaService';
 
 const AdolescentDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [myVisits, setMyVisits] = useState([]);
+  const [mySupplements, setMySupplements] = useState(null);
+  const [myAlerts, setMyAlerts] = useState([]);
+  const [loadingMyData, setLoadingMyData] = useState(true);
+
+  useEffect(() => {
+    const userData = sessionManager.getUserData ? sessionManager.getUserData() : null;
+    const name = userData?.name || localStorage.getItem('userName');
+    if (!name) {
+      setLoadingMyData(false);
+      return;
+    }
+    const load = async () => {
+      try {
+        setLoadingMyData(true);
+        const [visitsRes, alertsRes] = await Promise.all([
+          ashaService.getBeneficiaryVisits('adolescent', name),
+          ashaService.getAiAlerts().catch(() => ({ data: [] }))
+        ]);
+        const visits = visitsRes?.data || [];
+        setMyVisits(visits);
+        const supplementsSummary = visits.reduce(
+          (acc, v) => {
+            const s = v.supplements || {};
+            if (s.iron) acc.iron += 1;
+            if (s.vitaminA) acc.vitaminA += 1;
+            if (s.deworming) acc.deworming += 1;
+            if (s.calcium) acc.calcium += 1;
+            if (s.folicAcid) acc.folicAcid += 1;
+            return acc;
+          },
+          { iron: 0, vitaminA: 0, deworming: 0, calcium: 0, folicAcid: 0 }
+        );
+        setMySupplements(supplementsSummary);
+        const allAlerts = alertsRes?.data || alertsRes || [];
+        const relatedAlerts = allAlerts.filter(
+          (a) =>
+            a.beneficiaryName &&
+            a.beneficiaryName.toLowerCase() === String(name || '').toLowerCase()
+        );
+        setMyAlerts(relatedAlerts);
+      } catch (e) {
+        console.warn('AdolescentDashboard: Failed to load personal ASHA data', e);
+      } finally {
+        setLoadingMyData(false);
+      }
+    };
+    load();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -201,9 +251,26 @@ const AdolescentDashboard = () => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-yellow-800">Health Alert</h3>
-            <p className="text-sm text-yellow-600">
-              Your hemoglobin level indicates mild anemia. Please continue taking iron tablets regularly and maintain a healthy diet rich in iron.
-            </p>
+            {loadingMyData ? (
+              <p className="text-sm text-yellow-600">Loading your latest alerts...</p>
+            ) : myAlerts.length === 0 ? (
+              <p className="text-sm text-yellow-600">
+                No AI health alerts right now. Keep following healthy habits and taking supplements as advised.
+              </p>
+            ) : (
+              <div className="text-sm text-yellow-700">
+                <p className="font-medium">{myAlerts[0].title}</p>
+                <p className="mt-1">
+                  <strong>Reason:</strong> {myAlerts[0].reason}
+                </p>
+                <p className="mt-1">
+                  <strong>Action:</strong> {myAlerts[0].action}
+                </p>
+                <p className="text-xs text-yellow-800 mt-1">
+                  {new Date(myAlerts[0].date).toLocaleDateString()} • Risk: {myAlerts[0].riskLevel}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
@@ -343,6 +410,62 @@ const AdolescentDashboard = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* My ASHA visit history */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="bg-white rounded-xl p-6 shadow-lg border border-gray-200"
+      >
+        <h3 className="text-lg font-semibold text-black mb-4">My ASHA Visit History</h3>
+        {loadingMyData ? (
+          <p className="text-sm text-gray-500">Loading visits recorded by your ASHA worker...</p>
+        ) : myVisits.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No ASHA visits have been recorded for you yet in the system.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {myVisits.map((v) => (
+              <div key={v._id} className="p-3 bg-gray-50 rounded-lg text-sm">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-medium text-black">
+                    {new Date(v.visitDate).toLocaleDateString()}
+                  </span>
+                  <span className="text-xs text-gray-500 capitalize">{v.personType}</span>
+                </div>
+                <div className="text-gray-600">
+                  {[
+                    v.hemoglobin != null && `Hb: ${v.hemoglobin}`,
+                    v.weight != null && `Wt: ${v.weight} kg`,
+                    v.muac != null && `MUAC: ${v.muac} cm`
+                  ]
+                    .filter(Boolean)
+                    .join(' • ')}
+                </div>
+                {v.supplements && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Supplements:{' '}
+                    {[
+                      v.supplements.iron && 'Iron',
+                      v.supplements.vitaminA && 'Vitamin A',
+                      v.supplements.deworming && 'Deworming',
+                      v.supplements.calcium && 'Calcium',
+                      v.supplements.folicAcid && 'Folic acid'
+                    ]
+                      .filter(Boolean)
+                      .join(', ') || 'None recorded'}
+                  </div>
+                )}
+                {v.remarks && (
+                  <div className="text-xs text-gray-500 mt-1">Notes: {v.remarks}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 
@@ -354,26 +477,57 @@ const AdolescentDashboard = () => {
         <motion.div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
           <h3 className="text-lg font-semibold text-black mb-4">Current Month Progress</h3>
           <div className="text-center mb-6">
-            <div className="text-4xl font-bold text-blue-600 mb-2">28/30</div>
-            <p className="text-gray-600">Iron tablets taken this month</p>
-            <div className="w-full bg-gray-200 rounded-full h-3 mt-4">
-              <div className="bg-blue-600 h-3 rounded-full" style={{ width: '93%' }}></div>
-            </div>
-            <p className="text-sm text-gray-500 mt-2">93% completion rate</p>
+            {loadingMyData ? (
+              <>
+                <div className="text-sm text-gray-500 mb-2">Loading your supplement data...</div>
+              </>
+            ) : (
+              <>
+                <div className="text-4xl font-bold text-blue-600 mb-2">
+                  {mySupplements ? `${mySupplements.iron}/` : ''}{mySupplements ? myVisits.length : 0}
+                </div>
+                <p className="text-gray-600">
+                  Visits where iron tablets were given (from ASHA field visit records)
+                </p>
+                <div className="w-full bg-gray-200 rounded-full h-3 mt-4">
+                  <div
+                    className="bg-blue-600 h-3 rounded-full"
+                    style={{
+                      width:
+                        mySupplements && myVisits.length
+                          ? `${Math.min(100, Math.round((mySupplements.iron / myVisits.length) * 100))}%`
+                          : '0%'
+                    }}
+                  ></div>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  {mySupplements && myVisits.length
+                    ? `${Math.min(
+                        100,
+                        Math.round((mySupplements.iron / myVisits.length) * 100)
+                      )}% of your visits included iron tablets`
+                    : 'No iron tablet records found yet.'}
+                </p>
+              </>
+            )}
           </div>
           
           <div className="space-y-3">
             <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-gray-600">Tablets Received</span>
-              <span className="font-medium text-black">30</span>
+              <span className="font-medium text-black">
+                {mySupplements ? mySupplements.iron : '--'}
+              </span>
             </div>
             <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-gray-600">Tablets Consumed</span>
-              <span className="font-medium text-green-600">28</span>
+              <span className="font-medium text-green-600">
+                {mySupplements ? mySupplements.iron : '--'}
+              </span>
             </div>
             <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
               <span className="text-gray-600">Remaining</span>
-              <span className="font-medium text-orange-600">2</span>
+              <span className="font-medium text-orange-600">--</span>
             </div>
           </div>
         </motion.div>

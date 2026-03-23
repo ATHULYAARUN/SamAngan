@@ -21,6 +21,8 @@ const systemSettingsRoutes = require('./routes/systemSettings');
 const schemesRoutes = require('./routes/schemes-simple');
 const feedbackRoutes = require('./routes/feedback');
 const ashaRoutes = require('./routes/asha');
+const pregnancyRoutes = require('./routes/pregnancy');
+const sanitationRoutes = require('./routes/sanitation');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -35,9 +37,26 @@ try {
   console.log('Firebase initialization skipped:', error.message);
 }
 
+// CORS first so every response (including ping and preflight OPTIONS) gets CORS headers
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? ['https://your-frontend-domain.com']
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+};
+app.use(cors(corsOptions));
+
 // Security middleware
 app.use(helmet());
 app.use(compression());
+
+// Ping for frontend connection check (before rate limit so it always works)
+app.get('/api/ping', (req, res) => {
+  res.json({ status: 'OK', ts: Date.now() });
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -48,16 +67,6 @@ const limiter = rateLimit({
   },
 });
 app.use('/api/', limiter);
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] 
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-app.use(cors(corsOptions));
 
 // Body parsing middleware
 app.use(express.json({ limit: '50mb' }));
@@ -132,6 +141,16 @@ try {
   app.use('/api/asha', ashaRoutes);
 } catch (e) { console.log('ASHA routes not available'); }
 
+// Pregnancy routes (for pregnancy monitoring)
+try {
+  app.use('/api/pregnancy', pregnancyRoutes);
+} catch (e) { console.log('Pregnancy routes not available'); }
+
+// Sanitation routes (for sanitation worker dashboard)
+try {
+  app.use('/api/sanitation', sanitationRoutes);
+} catch (e) { console.log('Sanitation routes not available'); }
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -188,26 +207,48 @@ const connectDB = async () => {
 };
 
 // Start server
-const startServer = async () => {
-  try {
-    // Try to connect to database (non-blocking)
-    await connectDB();
-    
-    const server = app.listen(PORT, () => {
+const FALLBACK_PORT = 5000;
+
+const listen = (port) => {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      const portHint = port !== 5000
+        ? `\n💡 Frontend proxy: in forntend/.env set VITE_BACKEND_PORT=${port} so /api reaches this server.`
+        : '';
       console.log(`
 🚀 SampoornaAngan Backend Server Started
 📍 Environment: ${process.env.NODE_ENV || 'development'}
-🌐 Server running on port ${PORT}
-📊 Health check: http://localhost:${PORT}/health
-📚 API Base URL: http://localhost:${PORT}/api
+🌐 Server running on port ${port}
+📊 Health check: http://localhost:${port}/health
+📚 API Base URL: http://localhost:${port}/api
 🔧 Available endpoints:
    • GET  /api/schemes - Get welfare schemes
    • GET  /api/schemes/enrollments - Get enrollments
-   • POST /api/schemes/enroll - Enroll in scheme
+   • POST /api/schemes/enroll - Enroll in scheme${portHint}
       `);
+      resolve(server);
     });
+    server.on('error', (err) => reject(err));
+  });
+};
 
-    // Graceful shutdown handlers
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    let server;
+    try {
+      server = await listen(PORT);
+    } catch (err) {
+      if (err.code === 'EADDRINUSE' && PORT !== FALLBACK_PORT) {
+        console.warn(`⚠️ Port ${PORT} is already in use. Trying port ${FALLBACK_PORT}...`);
+        server = await listen(FALLBACK_PORT);
+        console.warn(`💡 To free port ${PORT}, stop the other process or set PORT=${FALLBACK_PORT} in backend/.env`);
+      } else {
+        throw err;
+      }
+    }
+
     process.on('SIGTERM', () => {
       console.log('🛑 SIGTERM received. Shutting down gracefully...');
       server.close(() => {
@@ -223,7 +264,6 @@ const startServer = async () => {
         process.exit(0);
       });
     });
-
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

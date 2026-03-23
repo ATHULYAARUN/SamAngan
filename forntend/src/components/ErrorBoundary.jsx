@@ -25,9 +25,13 @@ class ErrorBoundary extends React.Component {
           <h2 className="text-xl font-bold text-red-800 mb-4">Something went wrong</h2>
           <details className="whitespace-pre-wrap text-sm text-red-600">
             <summary className="cursor-pointer font-semibold mb-2">Error Details</summary>
-            {this.state.error && this.state.error.toString()}
-            <br />
-            {this.state.errorInfo.componentStack}
+            {this.state.error != null ? this.state.error.toString() : 'Unknown error'}
+            {(this.state.errorInfo?.componentStack) && (
+              <>
+                <br />
+                {this.state.errorInfo.componentStack}
+              </>
+            )}
           </details>
           <button 
             onClick={() => {

@@ -3,6 +3,20 @@ const router = express.Router();
 
 // Import models
 const Child = require('../models/Child');
+
+// Match center by first word / common variants so "Akkarakunnu Anganwadi" matches "Akkarakunnu Anganwadi Center"
+function centerFilterFor(anganwadiCenter) {
+  const raw = String(anganwadiCenter || '').trim();
+  if (!raw) return {};
+  const firstWord = raw.split(/\s+/)[0] || '';
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const variants = [firstWord];
+  const singleK = firstWord.replace(/kk/g, 'k');
+  if (singleK !== firstWord) variants.push(singleK);
+  return variants.length > 1
+    ? { $or: variants.map((v) => ({ anganwadiCenter: new RegExp(escape(v), 'i') })) }
+    : { anganwadiCenter: new RegExp(escape(firstWord), 'i') };
+}
 const PregnantWoman = require('../models/PregnantWoman');
 const Adolescent = require('../models/Adolescent');
 const Newborn = require('../models/Newborn');
@@ -488,9 +502,8 @@ const getChildren = async (req, res) => {
   try {
     const { anganwadiCenter, status = 'active', page = 1, limit = 10 } = req.query;
 
-    const query = {};
-    if (anganwadiCenter) query.anganwadiCenter = anganwadiCenter;
-    if (status) query.status = status;
+    const query = { status };
+    if (anganwadiCenter) Object.assign(query, centerFilterFor(anganwadiCenter));
 
     const children = await Child.find(query)
       .sort({ enrollmentDate: -1 })
@@ -530,9 +543,8 @@ const getPregnantWomen = async (req, res) => {
   try {
     const { anganwadiCenter, status = 'active', page = 1, limit = 10 } = req.query;
 
-    const query = {};
-    if (anganwadiCenter) query.anganwadiCenter = anganwadiCenter;
-    if (status) query.status = status;
+    const query = { status };
+    if (anganwadiCenter) Object.assign(query, centerFilterFor(anganwadiCenter));
 
     const pregnantWomen = await PregnantWoman.find(query)
       .sort({ registrationDate: -1 })
@@ -578,9 +590,8 @@ const getAdolescents = async (req, res) => {
   try {
     const { anganwadiCenter, status = 'active', page = 1, limit = 10 } = req.query;
 
-    const query = {};
-    if (anganwadiCenter) query.anganwadiCenter = anganwadiCenter;
-    if (status) query.status = status;
+    const query = { status };
+    if (anganwadiCenter) Object.assign(query, centerFilterFor(anganwadiCenter));
 
     const adolescents = await Adolescent.find(query)
       .sort({ registrationDate: -1 })
@@ -620,9 +631,8 @@ const getNewborns = async (req, res) => {
   try {
     const { anganwadiCenter, status = 'active', page = 1, limit = 10 } = req.query;
 
-    const query = {};
-    if (anganwadiCenter) query.anganwadiCenter = anganwadiCenter;
-    if (status) query.status = status;
+    const query = { status };
+    if (anganwadiCenter) Object.assign(query, centerFilterFor(anganwadiCenter));
 
     const newborns = await Newborn.find(query)
       .sort({ registrationDate: -1 })
@@ -825,11 +835,11 @@ const getMyChildDetails = async (req, res) => {
   }
 };
 
-// Get routes
-router.get('/children', verifyFirebaseAuth, getChildren);
-router.get('/pregnant-women', verifyFirebaseAuth, getPregnantWomen);
-router.get('/adolescents', verifyFirebaseAuth, getAdolescents);
-router.get('/newborns', verifyFirebaseAuth, getNewborns);
+// Get routes (flexible auth so AWW dashboard works with both Firebase and direct login)
+router.get('/children', verifyFlexibleAuth, getChildren);
+router.get('/pregnant-women', verifyFlexibleAuth, getPregnantWomen);
+router.get('/adolescents', verifyFlexibleAuth, getAdolescents);
+router.get('/newborns', verifyFlexibleAuth, getNewborns);
 
 // @desc    Export children data
 // @route   GET /api/registration/children/export

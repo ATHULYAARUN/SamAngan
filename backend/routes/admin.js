@@ -11,6 +11,10 @@ const Child = require('../models/Child');
 const PregnantWoman = require('../models/PregnantWoman');
 const Adolescent = require('../models/Adolescent');
 const Newborn = require('../models/Newborn');
+const WasteLog = require('../models/WasteLog');
+const SanitationTask = require('../models/SanitationTask');
+const ASHAFieldVisit = require('../models/ASHAFieldVisit');
+const { buildAiAlertsFromVisits } = require('../utils/aiHealthAlerts');
 
 // Import services
 const emailService = require('../services/emailService');
@@ -170,6 +174,42 @@ const getAdminDashboard = async (req, res) => {
       }),
       healthAlerts: healthAlerts.reduce((sum, count) => sum + count, 0),
       centerStats
+    };
+
+    // Waste management metrics based on sanitation data
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    const [completedCollectionsToday, pendingCollections, wasteTodayKg, activeSanitationWorkers, recentWasteLogs] =
+      await Promise.all([
+        SanitationTask.countDocuments({ status: 'Completed', date: { $gte: todayStart, $lt: todayEnd } }),
+        SanitationTask.countDocuments({ status: { $in: ['Pending', 'In Progress'] } }),
+        WasteLog.aggregate([
+          { $match: { date: { $gte: todayStart, $lt: todayEnd }, collectionStatus: 'Collected' } },
+          { $group: { _id: null, total: { $sum: '$quantity' } } }
+        ]).then(r => r[0]?.total ?? 0),
+        User.countDocuments({ role: 'sanitation-worker', isActive: true }),
+        WasteLog.find({})
+          .sort({ date: -1, createdAt: -1 })
+          .limit(5)
+          .select('date anganwadiCenter wasteType quantity quantityUnit collectionStatus remarks recordedBy')
+          .lean()
+      ]);
+
+    const totalTasksToday = completedCollectionsToday + pendingCollections;
+    const collectionRate = totalTasksToday > 0
+      ? Math.round((completedCollectionsToday / totalTasksToday) * 100)
+      : 0;
+
+    stats.wasteManagementSummary = {
+      collectionRate,
+      completedCollectionsToday,
+      pendingCollections,
+      wasteTodayKg,
+      activeSanitationWorkers,
+      recentWasteLogs
     };
     
     // Get recent activities from actual data
@@ -1599,5 +1639,19 @@ router.put('/users/:id', verifyAdminAuth, checkRole('super-admin'), validateObje
 router.delete('/users/:id', verifyAdminAuth, checkRole('super-admin'), validateObjectId, deleteUserById);
 router.put('/users/:id/reactivate', verifyAdminAuth, checkRole('super-admin'), validateObjectId, reactivateUser);
 router.get('/stats', verifyAdminAuth, checkRole('super-admin'), getSystemStats);
+
+// All AI health predictions from ASHA worker dashboard (all areas)
+router.get('/health/ai-alerts', verifyAdminAuth, checkRole('super-admin'), async (req, res) => {
+  try {
+    const womanVisits = await ASHAFieldVisit.find({ personType: 'woman' }).sort({ visitDate: -1 }).limit(150).lean();
+    const childVisits = await ASHAFieldVisit.find({ personType: 'child' }).sort({ visitDate: -1 }).limit(150).lean();
+    const adolescentVisits = await ASHAFieldVisit.find({ personType: 'adolescent' }).sort({ visitDate: -1 }).limit(150).lean();
+    const aiAlerts = buildAiAlertsFromVisits(womanVisits, childVisits, adolescentVisits);
+    res.json({ success: true, count: aiAlerts.length, data: aiAlerts.slice(0, 50) });
+  } catch (error) {
+    console.error('Admin AI health alerts error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch AI health alerts', error: error.message });
+  }
+});
 
 module.exports = router;

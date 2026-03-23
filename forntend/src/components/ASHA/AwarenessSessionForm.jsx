@@ -6,7 +6,13 @@ import {
   FileText,
   Upload,
   Save,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MapPin,
+  Clock,
+  Target,
+  BookOpen,
+  Award,
+  AlertCircle
 } from 'lucide-react';
 import ashaService from '../../services/ashaService';
 
@@ -15,10 +21,19 @@ const AwarenessSessionForm = ({ onSuccess }) => {
   const [formData, setFormData] = useState({
     sessionTitle: '',
     sessionDate: new Date().toISOString().split('T')[0],
-    audienceType: 'parents', // parents, adolescents, general
+    audienceType: 'parents',
     participantsCount: '',
     description: '',
     outcomes: '',
+    venue: '',
+    duration: '',
+    facilitator: '',
+    topics: [],
+    materials: [],
+    challenges: '',
+    recommendations: '',
+    followUpRequired: false,
+    followUpDate: '',
     file: null
   });
 
@@ -27,9 +42,29 @@ const AwarenessSessionForm = ({ onSuccess }) => {
   const [filePreview, setFilePreview] = useState(null);
 
   const handleChange = (e) => {
-    const { name, value, files } = e.target;
+    const { name, value, files, type, checked } = e.target;
     
-    if (name === 'file') {
+    if (name.includes('.')) {
+      const [parent, child] = name.split('.');
+      if (parent === 'topics' || parent === 'materials') {
+        if (type === 'checkbox') {
+          setFormData(prev => ({
+            ...prev,
+            [parent]: checked 
+              ? [...prev[parent], value]
+              : prev[parent].filter(item => item !== value)
+          }));
+        }
+      } else if (parent === 'followUp') {
+        setFormData(prev => ({
+          ...prev,
+          followUp: {
+            ...prev.followUp,
+            [child]: type === 'checkbox' ? checked : value
+          }
+        }));
+      }
+    } else if (name === 'file') {
       const file = files[0];
       if (file) {
         // Validate file type
@@ -138,7 +173,129 @@ const AwarenessSessionForm = ({ onSuccess }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Information */}
+        {/* Session Details */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Venue
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                name="venue"
+                value={formData.venue}
+                onChange={handleChange}
+                className={`${inputClass} pl-12`}
+                placeholder="e.g., Anganwadi Center, Community Hall"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Duration (hours)
+            </label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                name="duration"
+                value={formData.duration}
+                onChange={handleChange}
+                className={`${inputClass} pl-12`}
+                placeholder="e.g., 2 hours"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Facilitator
+            </label>
+            <div className="relative">
+              <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                name="facilitator"
+                value={formData.facilitator}
+                onChange={handleChange}
+                className={`${inputClass} pl-12`}
+                placeholder="Session facilitator name"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Target Audience Size
+            </label>
+            <div className="relative">
+              <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                name="participantsCount"
+                value={formData.participantsCount}
+                onChange={handleChange}
+                className={`${inputClass} pl-12 ${errors.participantsCount ? 'border-red-500 bg-red-50' : ''}`}
+                placeholder="Expected number of participants"
+              />
+            </div>
+            {errors.participantsCount && <p className={errorClass}>{errors.participantsCount}</p>}
+          </div>
+        </div>
+
+        {/* Topics Covered */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Topic / Topics Covered
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              'Nutrition awareness', 'Menstrual hygiene', 'Child vaccination awareness', 'Sanitation awareness', 'Breastfeeding education',
+              'Nutrition', 'Hygiene', 'Immunization', 'Child Development',
+              'Maternal Health', 'Family Planning', 'Sanitation', 'Breastfeeding',
+              'Anemia Prevention', 'Child Nutrition', 'Growth Monitoring', 'Health Checkups'
+            ].map((topic) => (
+              <label key={topic} className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="topics"
+                  value={topic}
+                  checked={formData.topics.includes(topic)}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mr-2"
+                />
+                <span className="text-sm text-gray-700">{topic}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Materials Used */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Materials Used
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              'Flip Charts', 'Posters', 'Videos', 'Models',
+              'Brochures', 'Demonstration Kit', 'Audio Aids', 'Training Materials'
+            ].map((material) => (
+              <label key={material} className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="materials"
+                  value={material}
+                  checked={formData.materials.includes(material)}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mr-2"
+                />
+                <span className="text-sm text-gray-700">{material}</span>
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -226,7 +383,73 @@ const AwarenessSessionForm = ({ onSuccess }) => {
           {errors.description && <p className={errorClass}>{errors.description}</p>}
         </div>
 
-        {/* Outcomes */}
+        {/* Challenges and Recommendations */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Challenges Faced
+            </label>
+            <div className="relative">
+              <AlertCircle className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
+              <textarea
+                name="challenges"
+                value={formData.challenges}
+                onChange={handleChange}
+                rows={3}
+                className={`${inputClass} pl-12`}
+                placeholder="Any challenges during the session..."
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Recommendations
+            </label>
+            <div className="relative">
+              <Award className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
+              <textarea
+                name="recommendations"
+                value={formData.recommendations}
+                onChange={handleChange}
+                rows={3}
+                className={`${inputClass} pl-12`}
+                placeholder="Suggestions for future sessions..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Follow-up Required */}
+        <div>
+          <div className="flex items-center mb-3">
+            <input
+              type="checkbox"
+              name="followUpRequired"
+              checked={formData.followUpRequired}
+              onChange={handleChange}
+              className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 mr-2"
+            />
+            <label className="text-sm font-medium text-gray-700">
+              Follow-up Session Required
+            </label>
+          </div>
+
+          {formData.followUpRequired && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Follow-up Date
+              </label>
+              <input
+                type="date"
+                name="followUpDate"
+                value={formData.followUpDate}
+                onChange={handleChange}
+                className={inputClass}
+              />
+            </div>
+          )}
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Session Outcomes (Optional)
