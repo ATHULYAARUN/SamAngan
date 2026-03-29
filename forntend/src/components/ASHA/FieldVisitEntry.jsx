@@ -12,16 +12,14 @@ import {
   Save,
   X,
   AlertTriangle,
-  Thermometer,
-  Ruler,
   Clock,
-  Phone,
   MapPin
 } from 'lucide-react';
 import ashaService from '../../services/ashaService';
 
 const FieldVisitEntry = ({ onSuccess }) => {
   const MotionDiv = motion.div;
+  const [menstrualIssueInput, setMenstrualIssueInput] = useState('');
   const [formData, setFormData] = useState({
     visitDate: new Date().toISOString().split('T')[0],
     personType: 'woman',
@@ -64,6 +62,12 @@ const FieldVisitEntry = ({ onSuccess }) => {
       required: false,
       date: '',
       notes: ''
+    },
+    adolescentDetails: {
+      lastMenstrualDate: '',
+      cycleRegularity: 'unknown',
+      menstrualIssues: [],
+      schoolStatus: 'unknown'
     },
     remarks: ''
   });
@@ -114,7 +118,14 @@ const FieldVisitEntry = ({ onSuccess }) => {
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       
-      if (parent === 'vaccination' || parent === 'supplements' || parent === 'healthIndicators' || parent === 'referrals' || parent === 'followUp') {
+      if (
+        parent === 'vaccination' ||
+        parent === 'supplements' ||
+        parent === 'healthIndicators' ||
+        parent === 'referrals' ||
+        parent === 'followUp' ||
+        parent === 'adolescentDetails'
+      ) {
         setFormData(prev => ({
           ...prev,
           [parent]: {
@@ -167,8 +178,36 @@ const FieldVisitEntry = ({ onSuccess }) => {
       newErrors.personName = 'Use letters only with single spaces';
     }
 
+    const numericAge = Number(formData.age);
+    if (formData.personType === 'adolescent' && formData.age && (numericAge < 10 || numericAge > 19)) {
+      newErrors.age = 'Adolescent age must be between 10 and 19';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const addMenstrualIssue = () => {
+    const issue = menstrualIssueInput.trim();
+    if (!issue) return;
+    setFormData((prev) => ({
+      ...prev,
+      adolescentDetails: {
+        ...prev.adolescentDetails,
+        menstrualIssues: Array.from(new Set([...(prev.adolescentDetails.menstrualIssues || []), issue]))
+      }
+    }));
+    setMenstrualIssueInput('');
+  };
+
+  const removeMenstrualIssue = (issue) => {
+    setFormData((prev) => ({
+      ...prev,
+      adolescentDetails: {
+        ...prev.adolescentDetails,
+        menstrualIssues: (prev.adolescentDetails.menstrualIssues || []).filter((i) => i !== issue)
+      }
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -184,6 +223,14 @@ const FieldVisitEntry = ({ onSuccess }) => {
       
       await ashaService.createFieldVisit({
         ...formData,
+        adolescentDetails: formData.personType === 'adolescent'
+          ? {
+              lastMenstrualDate: formData.adolescentDetails.lastMenstrualDate || null,
+              cycleRegularity: formData.adolescentDetails.cycleRegularity || 'unknown',
+              menstrualIssues: formData.adolescentDetails.menstrualIssues || [],
+              schoolStatus: formData.adolescentDetails.schoolStatus || 'unknown'
+            }
+          : {},
         ashaArea
       });
       
@@ -208,8 +255,15 @@ const FieldVisitEntry = ({ onSuccess }) => {
         healthIndicators: formData.healthIndicators,
         referrals: formData.referrals,
         followUp: formData.followUp,
+        adolescentDetails: {
+          lastMenstrualDate: '',
+          cycleRegularity: 'unknown',
+          menstrualIssues: [],
+          schoolStatus: 'unknown'
+        },
         remarks: ''
       });
+      setMenstrualIssueInput('');
       
       if (onSuccess) onSuccess();
     } catch (error) {
@@ -237,6 +291,95 @@ const FieldVisitEntry = ({ onSuccess }) => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900">Household Visit Entry</h2>
         </div>
+
+        {formData.personType === 'adolescent' && (
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Adolescent-Specific Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Last Menstrual Date</label>
+                <input
+                  type="date"
+                  name="adolescentDetails.lastMenstrualDate"
+                  value={formData.adolescentDetails.lastMenstrualDate}
+                  onChange={handleChange}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cycle Regularity</label>
+                <select
+                  name="adolescentDetails.cycleRegularity"
+                  value={formData.adolescentDetails.cycleRegularity}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="regular">Regular</option>
+                  <option value="irregular">Irregular</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">School Status</label>
+                <select
+                  name="adolescentDetails.schoolStatus"
+                  value={formData.adolescentDetails.schoolStatus}
+                  onChange={handleChange}
+                  className={inputClass}
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="student">Student</option>
+                  <option value="dropout">Dropout</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Menstrual Issues</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={menstrualIssueInput}
+                    onChange={(e) => setMenstrualIssueInput(e.target.value)}
+                    className={inputClass}
+                    placeholder="e.g., pain, heavy bleeding"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addMenstrualIssue();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addMenstrualIssue}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(formData.adolescentDetails.menstrualIssues || []).map((issue) => (
+                    <span
+                      key={issue}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-pink-100 text-pink-700 rounded-full"
+                    >
+                      {issue}
+                      <button
+                        type="button"
+                        onClick={() => removeMenstrualIssue(issue)}
+                        className="text-pink-700 hover:text-pink-900"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -464,45 +607,45 @@ const FieldVisitEntry = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Additional Health Details */}
-        <div className="border-t pt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Health Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Temperature (°F)
-              </label>
-              <div className="relative">
-                <Thermometer className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  name="temperature"
-                  value={formData.temperature}
-                  onChange={handleChange}
-                  className={`${inputClass} pl-12`}
-                  placeholder="e.g., 98.6"
-                />
+        {/* Additional Health Details (not shown for adolescent form) */}
+        {formData.personType !== 'adolescent' && (
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Health Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Temperature (°F)
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="temperature"
+                    value={formData.temperature}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="e.g., 98.6"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                MUAC (cm) - Mid-Upper Arm Circumference
-              </label>
-              <div className="relative">
-                <Ruler className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  name="muac"
-                  value={formData.muac}
-                  onChange={handleChange}
-                  className={`${inputClass} pl-12`}
-                  placeholder="e.g., 22.5"
-                />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  MUAC (cm) - Mid-Upper Arm Circumference
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="muac"
+                    value={formData.muac}
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="e.g., 22.5"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Health Indicators */}
         <div className="border-t pt-6">
@@ -511,7 +654,7 @@ const FieldVisitEntry = ({ onSuccess }) => {
             {[
               { key: 'anemia', label: 'Anemia', icon: Droplet },
               { key: 'malnutrition', label: 'Malnutrition', icon: AlertTriangle },
-              { key: 'highRiskPregnancy', label: 'High Risk Pregnancy', icon: Heart },
+              ...(formData.personType === 'woman' ? [{ key: 'highRiskPregnancy', label: 'High Risk Pregnancy', icon: Heart }] : []),
               { key: 'immunizationDelay', label: 'Immunization Delay', icon: Clock },
               { key: 'developmentalDelays', label: 'Developmental Delays', icon: Activity }
             ].map((indicator) => (

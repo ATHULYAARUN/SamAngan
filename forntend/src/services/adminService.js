@@ -271,6 +271,23 @@ class AdminService {
     }
   }
 
+  // Get health monitoring summary counts (actual backend data)
+  async getHealthMonitoringSummary(params = {}) {
+    try {
+      const queryParams = new URLSearchParams(params).toString();
+      const response = await fetch(`${API_BASE_URL}/admin/health/summary?${queryParams}`, {
+        method: 'GET',
+        headers: this.getAuthHeaders()
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Failed to fetch health monitoring summary');
+      return result;
+    } catch (error) {
+      console.error('Get health monitoring summary error:', error);
+      throw error;
+    }
+  }
+
 }
 
 // Create and export a singleton instance

@@ -133,24 +133,16 @@ const getAdminDashboard = async (req, res) => {
       }
     ]);
 
-    // Calculate health alerts (high-risk pregnancies, underweight children, etc.)
-    const healthAlerts = await Promise.all([
-      PregnantWoman.countDocuments({
-        status: 'active',
-        $or: [
-          { 'medicalHistory.complications': { $exists: true, $ne: [] } },
-          { 'currentPregnancy.riskFactors': { $exists: true, $ne: [] } }
-        ]
-      }),
-      Child.countDocuments({
-        status: 'active',
-        nutritionStatus: { $in: ['underweight', 'severely-underweight'] }
-      }),
-      Adolescent.countDocuments({
-        status: 'active',
-        'menstrualHealth.irregularCycles': true
-      })
-    ]);
+    // Calculate health alerts from actual ASHA field-visit risk indicators
+    const healthAlerts = await ASHAFieldVisit.countDocuments({
+      $or: [
+        { 'healthIndicators.anemia': true },
+        { 'healthIndicators.malnutrition': true },
+        { 'healthIndicators.highRiskPregnancy': true },
+        { 'healthIndicators.immunizationDelay': true },
+        { 'healthIndicators.developmentalDelays': true }
+      ]
+    });
 
     // Get system stats
     const stats = {
@@ -172,7 +164,7 @@ const getAdminDashboard = async (req, res) => {
         role: 'asha-volunteer',
         isActive: true
       }),
-      healthAlerts: healthAlerts.reduce((sum, count) => sum + count, 0),
+      healthAlerts,
       centerStats
     };
 
@@ -1494,6 +1486,101 @@ const getWorkerStats = async (req, res) => {
   }
 };
 
+// @desc    Get health monitoring summary counts (actual data)
+// @route   GET /api/admin/health/summary
+// @access  Private (Admin only)
+const getHealthMonitoringSummary = async (req, res) => {
+  try {
+    const { center = 'all', category = 'all' } = req.query;
+
+    const baseQuery = {};
+
+    if (center && center !== 'all') {
+      const centerMap = {
+        akkarakunnu: /akkarakunnu/i,
+        veliyanoor: /veliyanoor/i
+      };
+      if (centerMap[center]) {
+        baseQuery.ashaArea = centerMap[center];
+      }
+    }
+
+    if (category && category !== 'all') {
+      const categoryToPersonType = {
+        child: 'child',
+        pregnancy: 'woman',
+        adolescent: 'adolescent'
+      };
+      if (categoryToPersonType[category]) {
+        baseQuery.personType = categoryToPersonType[category];
+      }
+    }
+
+    const [
+      highRiskPregnancies,
+      anemiaCases,
+      growthMonitoring,
+      immunizationCoverage,
+      normalNutrition,
+      maternalCompliance
+    ] = await Promise.all([
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        personType: 'woman',
+        'healthIndicators.highRiskPregnancy': true
+      }),
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        'healthIndicators.anemia': true
+      }),
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        personType: 'child',
+        height: { $gt: 0 },
+        weight: { $gt: 0 }
+      }),
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        personType: 'child',
+        'vaccination.date': { $ne: null }
+      }),
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        personType: 'child',
+        'healthIndicators.malnutrition': false
+      }),
+      ASHAFieldVisit.countDocuments({
+        ...baseQuery,
+        personType: 'woman',
+        'supplements.iron': true,
+        'supplements.folicAcid': true
+      })
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          highRiskPregnancies,
+          anemiaCases,
+          growthMonitoring,
+          immunizationCoverage,
+          nutritionStatus: {
+            normal: normalNutrition
+          },
+          maternalCompliance
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get health monitoring summary error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch health monitoring summary'
+    });
+  }
+};
+
 // Helper function to send welcome email
 const sendWorkerWelcomeEmail = async (user, tempPassword) => {
   const loginUrl = `https://sampoornaangan.com/login`;
@@ -1653,5 +1740,6 @@ router.get('/health/ai-alerts', verifyAdminAuth, checkRole('super-admin'), async
     res.status(500).json({ success: false, message: 'Failed to fetch AI health alerts', error: error.message });
   }
 });
+router.get('/health/summary', verifyAdminAuth, checkRole('super-admin'), getHealthMonitoringSummary);
 
 module.exports = router;

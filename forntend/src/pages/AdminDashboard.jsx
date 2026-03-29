@@ -44,15 +44,13 @@ import dashboardService from '../services/dashboardService';
 import authService from '../services/authService';
 import sessionManager from '../utils/sessionManager';
 
-const VALID_TAB_IDS = ['overview', 'anganwadis', 'users', 'workers', 'monitoring', 'waste', 'reports', 'settings'];
+const VALID_TAB_IDS = ['overview', 'anganwadis', 'users', 'workers', 'monitoring', 'waste', 'settings'];
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(() =>
-    VALID_TAB_IDS.includes(tabFromUrl) ? tabFromUrl : 'overview'
-  );
+  const activeTab = VALID_TAB_IDS.includes(tabFromUrl) ? tabFromUrl : 'overview';
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -65,8 +63,6 @@ const AdminDashboard = () => {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const filterMenuRef = useRef(null);
   
-  // Force reports rendering state (true when URL or state says reports)
-  const [forceReports, setForceReports] = useState(() => tabFromUrl === 'reports');
   const [connectionStatus, setConnectionStatus] = useState('connecting'); // connecting, online, offline, error
 
   // Set up real-time dashboard updates
@@ -160,15 +156,6 @@ const AdminDashboard = () => {
       dashboardService.setUpdateFrequency('low');
     }
   }, [activeTab]);
-
-  // Keep activeTab in sync with URL (e.g. browser back/forward or initial load)
-  useEffect(() => {
-    const tab = searchParams.get('tab');
-    if (VALID_TAB_IDS.includes(tab) && tab !== activeTab) {
-      setActiveTab(tab);
-      setForceReports(tab === 'reports');
-    }
-  }, [searchParams]);
 
   // Close filter menu when clicking outside
   useEffect(() => {
@@ -934,19 +921,23 @@ const AdminDashboard = () => {
     { id: 'workers', label: 'Worker Management', icon: UserCheck },
     { id: 'monitoring', label: 'Health Monitoring', icon: Heart },
     { id: 'waste', label: 'Waste Management', icon: Activity },
-    { id: 'reports', label: 'Analytics & Reports', icon: FileText },
     { id: 'settings', label: 'System Settings', icon: Settings }
   ];
 
+  const handleTabChange = (tabId) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tabId === 'overview') {
+        next.delete('tab');
+      } else {
+        next.set('tab', tabId);
+      }
+      return next;
+    });
+  };
+
   const renderContent = () => {
     console.log('🔄 Rendering content for activeTab:', activeTab);
-    console.log('🔄 Force reports flag:', forceReports);
-    
-    // Force reports rendering if flag is set
-    if (forceReports || activeTab === 'reports') {
-      console.log('🚀 FORCING REPORTS RENDER');
-      return renderReports();
-    }
     
     switch (activeTab) {
       case 'overview':
@@ -1074,9 +1065,7 @@ const AdminDashboard = () => {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setForceReports(tab.id === 'reports');
-                  setActiveTab(tab.id);
-                  setSearchParams(tab.id === 'overview' ? {} : { tab: tab.id });
+                  handleTabChange(tab.id);
                 }}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200 ${
                   activeTab === tab.id

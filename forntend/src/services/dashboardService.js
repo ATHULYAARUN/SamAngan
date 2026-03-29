@@ -271,8 +271,11 @@ class DashboardService {
     const schemeCoverage = totalBeneficiaries > 0 ? 
       Math.min(95, Math.round((totalBeneficiaries / (totalBeneficiaries + 10)) * 100)) : 85;
 
-    // Calculate waste management efficiency (using actual data if available)
-    const wasteEfficiency = 94; // Could be calculated from actual sanitation data
+    // Waste management efficiency from backend sanitation summary when available
+    const wasteEfficiency =
+      typeof stats?.wasteManagementSummary?.collectionRate === 'number'
+        ? stats.wasteManagementSummary.collectionRate
+        : 0;
 
     // Calculate data verification pending based on actual data
     const dataVerificationPending = Math.max(0, Math.round(totalBeneficiaries * 0.03)); // 3% pending
@@ -287,7 +290,7 @@ class DashboardService {
       anganwadiGrowth: '+0%', // Static since we have 2 centers
       userGrowth: this.calculateGrowthPercentage(stats.registeredUsers || 0),
       healthAlertsTrend: (stats.healthAlerts || 0) > 5 ? '-12%' : '+5%',
-      wasteGrowth: '+2.1%',
+      wasteGrowth: wasteEfficiency > 0 ? '+0%' : '+0%',
       schemeGrowth: '+5.2%',
       verificationGrowth: '+8%'
     };

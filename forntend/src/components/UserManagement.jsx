@@ -78,14 +78,30 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await adminService.getUsers({
-        role: roleFilter === 'all' ? '' : roleFilter,
-        page: 1,
-        limit: 50
-      });
-      
-      if (response.success) {
-        setUsers(response.data.users || []);
+      const pageSize = 100; // backend validatePagination max is 100
+      let page = 1;
+      let allUsers = [];
+      let totalPages = 1;
+
+      do {
+        const response = await adminService.getUsers({
+          role: roleFilter === 'all' ? '' : roleFilter,
+          isActive: 'all',
+          page,
+          limit: pageSize
+        });
+
+        if (!response?.success) break;
+        const batch = response?.data?.users || [];
+        allUsers = allUsers.concat(batch);
+        totalPages = response?.data?.pagination?.pages || 1;
+        page += 1;
+      } while (page <= totalPages);
+
+      setUsers(allUsers);
+
+      if (allUsers.length === 0) {
+        console.warn('UserManagement: No users returned from API');
       }
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -240,14 +256,12 @@ const UserManagement = () => {
     setShowEditModal(true);
   };
 
-  // Show only Parent and Adolescent Girl users in Admin > User Management
+  // Show all users in Admin > User Management
   const filteredUsers = users.filter(user => {
-    const allowedRoles = ['parent', 'adolescent-girl'];
-    const matchesAllowed = allowedRoles.includes(user.role);
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    return matchesAllowed && matchesSearch && matchesRole;
+    return matchesSearch && matchesRole;
   });
 
   const getRoleIcon = (role) => {
@@ -257,7 +271,14 @@ const UserManagement = () => {
 
   const getRoleTitle = (role) => {
     const roleData = workerRoles.find(r => r.id === role);
-    return roleData ? roleData.title : role;
+    if (roleData) return roleData.title;
+    const titles = {
+      'super-admin': 'Super Admin',
+      parent: 'Parent',
+      'adolescent-girl': 'Adolescent Girl',
+      'pregnant-woman': 'Pregnant Woman'
+    };
+    return titles[role] || role;
   };
 
   const renderRoleSpecificFields = () => {
@@ -420,12 +441,12 @@ const UserManagement = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pr-2 sm:pr-3 lg:pr-4">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-black">User Management</h2>
-          <p className="text-gray-600">Manage Parents and Adolescent Girls</p>
+          <p className="text-gray-600">Manage all users</p>
         </div>
       </div>
 
@@ -470,34 +491,39 @@ const UserManagement = () => {
             className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="all">All</option>
+            <option value="super-admin">Super Admin</option>
+            <option value="anganwadi-worker">Anganwadi Worker</option>
+            <option value="asha-volunteer">ASHA Volunteer</option>
             <option value="parent">Parent</option>
             <option value="adolescent-girl">Adolescent Girl</option>
+            <option value="pregnant-woman">Pregnant Woman</option>
+            <option value="sanitation-worker">Sanitation Worker</option>
           </select>
         </div>
       </div>
 
       {/* Users Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div className="pb-1">
+          <table className="w-full table-fixed divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[22%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   User
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Role
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[24%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Contact
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Location
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[8%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-[8%] px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -505,13 +531,13 @@ const UserManagement = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan="6" className="px-4 py-4 text-center text-gray-500">
                     Loading users...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan="6" className="px-4 py-4 text-center text-gray-500">
                     No users found
                   </td>
                 </tr>
@@ -525,7 +551,7 @@ const UserManagement = () => {
                   
                   return (
                     <tr key={user._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
                             <User className="w-5 h-5 text-primary-600" />
@@ -536,23 +562,23 @@ const UserManagement = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4">
                         <div className="flex items-center">
                           <RoleIcon className="w-5 h-5 text-gray-500 mr-2" />
                           <span className="text-sm text-gray-900">{getRoleTitle(user.role)}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{user.email}</div>
-                        <div className="text-sm text-gray-500">{user.phone}</div>
+                      <td className="px-4 py-4">
+                        <div className="text-sm text-gray-900 break-words">{user.email}</div>
+                        <div className="text-sm text-gray-500 break-words">{user.phone}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{user.address?.street || ''}</div>
+                      <td className="px-4 py-4">
+                        <div className="text-sm text-gray-900 break-words">{user.address?.street || ''}</div>
                         {anganwadiName && (
-                          <div className="text-sm text-gray-500">{anganwadiName}</div>
+                          <div className="text-sm text-gray-500 break-words">{anganwadiName}</div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           user.isActive 
                             ? 'bg-green-100 text-green-800' 
@@ -561,7 +587,7 @@ const UserManagement = () => {
                           {user.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <td className="px-4 py-4 text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openEditModal(user)}

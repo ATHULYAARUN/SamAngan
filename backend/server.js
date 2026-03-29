@@ -65,6 +65,17 @@ const limiter = rateLimit({
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },
+  // Avoid locking local login flow during development.
+  skip: (req) => {
+    if (process.env.NODE_ENV === 'production') return false;
+    const path = String(req.path || '');
+    return (
+      path.startsWith('/auth/login') ||
+      path.startsWith('/auth/google-login') ||
+      path.startsWith('/api/auth/login') ||
+      path.startsWith('/api/auth/google-login')
+    );
+  },
 });
 app.use('/api/', limiter);
 

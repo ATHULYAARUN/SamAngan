@@ -14,6 +14,10 @@ const SchemeAwareness = require('../models/SchemeAwareness');
 const Child = require('../models/Child');
 const PregnantWoman = require('../models/PregnantWoman');
 const Adolescent = require('../models/Adolescent');
+const User = require('../models/User');
+const RiskPrediction = require('../models/RiskPrediction');
+const IFADistribution = require('../models/IFADistribution');
+const AdolescentChatMessage = require('../models/AdolescentChatMessage');
 
 // Import middleware
 const { verifyFirebaseAuth, verifyFlexibleAuth } = require('../middleware/auth');
@@ -342,11 +346,20 @@ router.post('/field-visits', verifyFlexibleAuth, upload.single('photo'), async (
     if (typeof referrals === 'string') try { referrals = JSON.parse(referrals); } catch (e) { referrals = {}; }
     let followUp = body.followUp;
     if (typeof followUp === 'string') try { followUp = JSON.parse(followUp); } catch (e) { followUp = {}; }
+    let adolescentDetails = body.adolescentDetails;
+    if (typeof adolescentDetails === 'string') try { adolescentDetails = JSON.parse(adolescentDetails); } catch (e) { adolescentDetails = {}; }
 
     if (!personType || !personName) {
       return res.status(400).json({
         success: false,
         message: 'Person type and name are required'
+      });
+    }
+
+    if (personType === 'adolescent' && age != null && (age < 10 || age > 19)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Adolescent age must be between 10 and 19 years'
       });
     }
 
@@ -375,6 +388,7 @@ router.post('/field-visits', verifyFlexibleAuth, upload.single('photo'), async (
       healthIndicators: healthIndicators || {},
       referrals: referrals || {},
       followUp: followUp || {},
+      adolescentDetails: personType === 'adolescent' ? (adolescentDetails || {}) : {},
       photos,
       createdBy: req.user?._id || req.user?.id || undefined
     });
@@ -1712,6 +1726,550 @@ router.get('/ai-alerts', verifyFlexibleAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching AI alerts:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch AI alerts', error: error.message });
+  }
+});
+
+// @desc    Get comprehensive adolescent dashboard data (read-only)
+// @route   GET /api/asha/adolescent-dashboard/:name
+// @access  Private
+router.get('/adolescent-dashboard/:name', verifyFlexibleAuth, async (req, res) => {
+  try {
+    const decodedName = decodeURIComponent(req.params.name || '').trim();
+    if (!decodedName) {
+      return res.status(400).json({ success: false, message: 'Adolescent name is required' });
+    }
+
+    const exactNameRegex = new RegExp(`^${escapeRegex(decodedName)}$`, 'i');
+    const broadNameRegex = new RegExp(escapeRegex(decodedName), 'i');
+
+    const adolescent = await Adolescent.findOne({ name: exactNameRegex }).lean();
+    const fallbackAdolescent = adolescent || await Adolescent.findOne({ name: broadNameRegex }).lean();
+
+    const allVisits = await ASHAFieldVisit.find({
+      personType: 'adolescent',
+      personName: broadNameRegex
+    }).sort({ visitDate: -1 }).limit(100).lean();
+
+    const relevantVisits = allVisits.filter((visit) => {
+      if (!visit.personName) return false;
+      return String(visit.personName).toLowerCase() === decodedName.toLowerCase();
+    });
+    const visits = relevantVisits.length > 0 ? relevantVisits : allVisits;
+
+    const checkups = Array.isArray(fallbackAdolescent?.healthCheckups)
+      ? [...fallbackAdolescent.healthCheckups].sort((a, b) => new Date(b.date) - new Date(a.date))
+      : [];
+
+    const checkupRecords = checkups.map((c) => ({
+      date: c.date,
+      height: c.height,
+      weight: c.weight,
+      bmi: c.bmi,
+      hemoglobin: c.hemoglobin,
+      nextCheckup: c.nextCheckup,
+      menstrualIssues: c.menstrualIssues || [],
+      checkedBy: c.checkedBy
+    }));
+
+    const visitRecords = visits.map((v) => {
+      let bmi = null;
+      if (v.weight != null && v.height != null && Number(v.height) > 0) {
+        const h = Number(v.height) / 100;
+        bmi = Number((Number(v.weight) / (h * h)).toFixed(1));
+      }
+      return {
+        date: v.visitDate,
+        height: v.height ?? null,
+        weight: v.weight ?? null,
+        bmi,
+        hemoglobin: v.hemoglobin ?? null,
+        menstrualIssues: [],
+        supplements: v.supplements || {},
+        healthIndicators: v.healthIndicators || {},
+        remarks: v.remarks || '',
+        ashaName: v.ashaName || ''
+      };
+    });
+
+    const combinedHealthHistory = [...checkupRecords, ...visitRecords]
+      .filter((r) => r.date)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const latestRecord = combinedHealthHistory.length > 0
+      ? combinedHealthHistory[combinedHealthHistory.length - 1]
+      : null;
+
+    const hb = latestRecord?.hemoglobin ?? null;
+    const bmi = latestRecord?.bmi ?? (fallbackAdolescent?.bmi ? Number(fallbackAdolescent.bmi) : null);
+
+    const anemiaStatus = hb == null
+      ? 'Unknown'
+      : hb >= 12
+        ? 'Normal'
+        : hb >= 10
+          ? 'Mild anemia'
+          : hb >= 7
+            ? 'Moderate anemia'
+            : 'Severe anemia';
+
+    const bmiStatus = bmi == null
+      ? 'Unknown'
+      : bmi < 18.5
+        ? 'Underweight'
+        : bmi <= 24.9
+          ? 'Normal'
+          : 'Overweight';
+
+    const aiAlerts = buildAiAlertsFromVisits([], [], visits);
+    const myAnemiaAlert = aiAlerts.find((a) => a.type === 'adolescent_anemia');
+
+    const nutritionSignals = [];
+    if (bmi != null && bmi < 18.5) nutritionSignals.push('Low BMI suggests nutrition gap');
+    if (hb != null && hb < 12) nutritionSignals.push('Low hemoglobin suggests iron deficiency');
+    const ironGivenCount = visits.filter((v) => v.supplements?.iron).length;
+    if (ironGivenCount === 0) nutritionSignals.push('No recent IFA distribution recorded');
+    const missedDosesFromDetails = visits.reduce(
+      (sum, v) => sum + (Number(v.adolescentDetails?.missedIFADoses || 0) || 0),
+      0
+    );
+    if (missedDosesFromDetails > 0) {
+      nutritionSignals.push(`Missed IFA doses reported (${missedDosesFromDetails})`);
+    }
+    const poorNutritionFlag = visits.some((v) => v.adolescentDetails?.nutritionIntake === 'poor');
+    if (poorNutritionFlag) {
+      nutritionSignals.push('Poor nutrition intake reported in recent visit');
+    }
+
+    const riskLevel = hb == null
+      ? 'Low'
+      : hb < 7
+        ? 'Severe Anemia'
+        : hb < 10
+          ? 'Moderate Anemia'
+          : hb < 12
+            ? 'Mild Anemia'
+            : 'Normal';
+
+    const confidence = Math.min(95, Math.max(60, 70 + nutritionSignals.length * 8 + (myAnemiaAlert ? 6 : 0)));
+
+    const ifaVisits = visits.filter((v) => v.supplements?.iron);
+    const distributedCount = ifaVisits.length;
+    const missedDoseSignals = visits.filter((v) => v.healthIndicators?.anemia).length;
+    const consumedEstimate = Math.max(0, distributedCount - missedDoseSignals - missedDosesFromDetails);
+    const compliancePercentage = distributedCount > 0
+      ? Math.round((consumedEstimate / distributedCount) * 100)
+      : 0;
+
+    const lastDistributionDate = ifaVisits[0]?.visitDate || null;
+
+    const menstrual = fallbackAdolescent?.menstrualHealth || {};
+    const menstrualHealth = {
+      lastMenstrualDate: menstrual.lastMenstrualPeriod || null,
+      cycleRegularity: menstrual.menstrualCycleLength
+        ? (menstrual.menstrualCycleLength >= 21 && menstrual.menstrualCycleLength <= 35 ? 'Regular' : 'Irregular')
+        : 'Unknown',
+      issues: Array.isArray(menstrual.menstrualProblems) ? menstrual.menstrualProblems : []
+    };
+    if (menstrualHealth.lastMenstrualDate == null) {
+      const latestVisitWithMenstrual = visits.find((v) => v.adolescentDetails?.lastMenstrualDate);
+      menstrualHealth.lastMenstrualDate = latestVisitWithMenstrual?.adolescentDetails?.lastMenstrualDate || null;
+    }
+    if (menstrualHealth.cycleRegularity === 'Unknown') {
+      const latestCycle = visits.find((v) => v.adolescentDetails?.cycleRegularity && v.adolescentDetails.cycleRegularity !== 'unknown');
+      if (latestCycle?.adolescentDetails?.cycleRegularity) {
+        menstrualHealth.cycleRegularity = latestCycle.adolescentDetails.cycleRegularity === 'regular' ? 'Regular' : 'Irregular';
+      }
+    }
+    if ((menstrualHealth.issues || []).length === 0) {
+      const visitIssues = visits
+        .flatMap((v) => (Array.isArray(v.adolescentDetails?.menstrualIssues) ? v.adolescentDetails.menstrualIssues : []))
+        .filter(Boolean);
+      menstrualHealth.issues = Array.from(new Set(visitIssues));
+    }
+
+    const awarenessSessions = await AwarenessSession.find({
+      $or: [
+        { audienceType: 'adolescents' },
+        { audienceType: 'general' }
+      ],
+      ...(fallbackAdolescent?.anganwadiCenter ? { ashaArea: new RegExp(escapeRegex(fallbackAdolescent.anganwadiCenter), 'i') } : {})
+    }).sort({ sessionDate: -1 }).limit(10).lean();
+
+    const schemeRecords = await SchemeAwareness.find({
+      beneficiaryType: 'adolescent',
+      beneficiaryName: broadNameRegex
+    }).sort({ updatedAt: -1 }).limit(10).lean();
+
+    const schemeList = [
+      {
+        schemeCode: 'sabla',
+        schemeName: 'SABLA Scheme (Adolescent Girls)',
+        eligibility: 'Adolescent girls (11-18 years) for nutrition and life skills support',
+        status: 'Not Applied'
+      },
+      {
+        schemeCode: 'poshan',
+        schemeName: 'POSHAN Abhiyaan',
+        eligibility: 'Adolescent girls with nutrition monitoring needs',
+        status: 'Not Applied'
+      },
+      {
+        schemeCode: 'menstrual',
+        schemeName: 'Menstrual Hygiene Scheme',
+        eligibility: 'Adolescent girls requiring menstrual hygiene support',
+        status: 'Not Applied'
+      }
+    ].map((base) => {
+      const hit = schemeListMatch(schemeRecords, base.schemeCode, base.schemeName);
+      return {
+        ...base,
+        status: hit?.status
+          ? (hit.status === 'benefiting' ? 'Benefited' : hit.status === 'applied' ? 'Applied' : 'Aware')
+          : base.status
+      };
+    });
+
+    const myUser = await User.findOne({ role: 'adolescent-girl', name: broadNameRegex }).lean();
+    const ashaNameFromVisits = visits.find((v) => v.ashaName)?.ashaName || null;
+    const ashaWorker = ashaNameFromVisits
+      || myUser?.roleSpecificData?.ashaDetails?.serviceArea
+      || null;
+
+    const profile = {
+      name: fallbackAdolescent?.name || decodedName,
+      age: calculateAgeFromDob(fallbackAdolescent?.dateOfBirth) ?? myUser?.roleSpecificData?.adolescentDetails?.age ?? null,
+      schoolOrStatus: fallbackAdolescent?.education?.isInSchool === false
+        ? `Dropout${fallbackAdolescent.education.dropoutReason ? ` (${fallbackAdolescent.education.dropoutReason})` : ''}`
+        : (fallbackAdolescent?.education?.schoolName || 'Student'),
+      address: fallbackAdolescent?.address
+        ? [
+            fallbackAdolescent.address.street,
+            fallbackAdolescent.address.village,
+            fallbackAdolescent.address.block,
+            fallbackAdolescent.address.district,
+            fallbackAdolescent.address.state,
+            fallbackAdolescent.address.pincode
+          ].filter(Boolean).join(', ')
+        : (myUser?.fullAddress || ''),
+      assignedAshaWorker: ashaWorker || 'Not assigned',
+      anganwadiCenter: fallbackAdolescent?.anganwadiCenter || myUser?.roleSpecificData?.anganwadiCenter?.name || 'Not available'
+    };
+
+    const alerts = [
+      ...aiAlerts.slice(0, 5).map((a) => ({
+        type: a.type,
+        title: a.title,
+        message: a.reason,
+        action: a.action,
+        riskLevel: a.riskLevel,
+        date: a.date
+      })),
+      ...(hb != null && hb < 12 ? [{
+        type: 'anemia',
+        title: `Hemoglobin level low (${hb} g/dL)`,
+        message: 'Hemoglobin below adolescent healthy range',
+        action: 'Take iron supplements regularly and review diet',
+        riskLevel: riskLevel,
+        date: new Date()
+      }] : [])
+    ].slice(0, 10);
+
+    const ashaVisitLogs = visits.slice(0, 10).map((v) => ({
+      visitDate: v.visitDate,
+      ashaWorkerName: v.ashaName || 'ASHA Worker',
+      adviceGiven: v.healthNotes || v.remarks || 'Follow nutrition and IFA guidance',
+      healthUpdates: [
+        v.hemoglobin != null ? `Hb: ${v.hemoglobin} g/dL` : null,
+        v.weight != null ? `Weight: ${v.weight} kg` : null,
+        v.height != null ? `Height: ${v.height} cm` : null
+      ].filter(Boolean).join(' | ')
+    }));
+
+    const lastHealthCheckup = latestRecord?.date || null;
+    const nextCheckupDate = checkups[0]?.nextCheckup || visits.find((v) => v.followUp?.date)?.followUp?.date || null;
+
+    const trends = combinedHealthHistory.map((r) => ({
+      date: r.date,
+      bmi: r.bmi ?? null,
+      hemoglobin: r.hemoglobin ?? null
+    })).filter((r) => r.bmi != null || r.hemoglobin != null);
+
+    const aiDietRecommendations = [];
+    if (hb != null && hb < 12) {
+      aiDietRecommendations.push('Add one iron-rich meal daily: spinach/ragi/lentils with lemon');
+      aiDietRecommendations.push('Take IFA tablets after food and avoid tea/coffee around dose time');
+    }
+    if (bmi != null && bmi < 18.5) {
+      aiDietRecommendations.push('Increase protein portions: egg/milk/paneer/sprouts at least twice daily');
+    }
+    if (aiDietRecommendations.length === 0) {
+      aiDietRecommendations.push('Maintain balanced meals with greens, pulses, fruits, and adequate hydration');
+    }
+
+    const latestVisitId = visits[0]?._id || null;
+    await RiskPrediction.create({
+      beneficiaryType: 'adolescent',
+      beneficiaryName: profile.name,
+      riskType: 'anemia',
+      riskStatus: riskLevel.toUpperCase(),
+      confidence,
+      reasons: nutritionSignals.length ? nutritionSignals : [hb != null ? `Low hemoglobin (${hb} g/dL)` : 'Insufficient hemoglobin data'],
+      recommendations: hb != null && hb < 12
+        ? ['Increase iron-rich food', 'Take IFA tablets regularly', 'Follow-up checkup in 30 days']
+        : ['Continue balanced diet', 'Maintain IFA compliance', 'Monthly checkup as scheduled'],
+      sourceVisitId: latestVisitId,
+      predictedAt: new Date()
+    });
+
+    await IFADistribution.create({
+      beneficiaryType: 'adolescent',
+      beneficiaryName: profile.name,
+      distributedCount,
+      consumedCount: consumedEstimate,
+      missedDoses: Math.max(0, distributedCount - consumedEstimate),
+      compliancePercentage,
+      lastDistributionDate,
+      snapshotDate: new Date()
+    });
+
+    res.json({
+      success: true,
+      data: {
+        profile,
+        overview: {
+          age: profile.age,
+          bmiStatus,
+          bmi,
+          hemoglobinLevel: hb,
+          anemiaStatus,
+          lastHealthCheckup,
+          nextCheckupDate
+        },
+        healthMonitoring: {
+          latest: latestRecord,
+          history: combinedHealthHistory.slice().reverse().slice(0, 20),
+          trends
+        },
+        aiRisk: {
+          status: riskLevel.toUpperCase(),
+          confidence,
+          reason: nutritionSignals.length ? nutritionSignals : [hb != null ? `Low hemoglobin (${hb} g/dL)` : 'Insufficient hemoglobin data'],
+          recommendation: hb != null && hb < 12
+            ? ['Increase iron-rich foods', 'Take IFA tablets regularly', 'Follow-up checkup in 30 days']
+            : ['Continue balanced diet', 'Maintain IFA compliance', 'Monthly checkup as scheduled']
+        },
+        ifaTracking: {
+          distributed: distributedCount,
+          consumed: consumedEstimate,
+          missedDoses: Math.max(0, distributedCount - consumedEstimate),
+          lastDistributionDate,
+          compliancePercentage
+        },
+        menstrualHealth,
+        nutrition: {
+          recommendedDietPlan: 'Daily greens, pulses, eggs, and seasonal fruits with adequate hydration',
+          ironRichFoods: ['Spinach', 'Dates', 'Eggs', 'Ragi', 'Lentils'],
+          proteinSuggestions: ['Egg', 'Milk', 'Paneer', 'Sprouts', 'Dal'],
+          aiDietRecommendations
+        },
+        awareness: {
+          content: [
+            'Menstrual hygiene: change sanitary pads every 4-6 hours',
+            'Anemia prevention: iron + vitamin C rich foods',
+            'Nutrition basics: balanced plate with protein and greens',
+            'Personal hygiene: daily bathing and handwashing'
+          ],
+          sessions: awarenessSessions.map((s) => ({
+            title: s.sessionTitle,
+            date: s.sessionDate,
+            venue: s.venue,
+            audienceType: s.audienceType
+          }))
+        },
+        schemes: schemeList,
+        alerts,
+        ashaVisitLogs,
+        rolePermissions: {
+          canViewHealthData: true,
+          canViewAlerts: true,
+          canViewSchemes: true,
+          canViewAwarenessContent: true,
+          canEditHealthData: false,
+          canModifyRecords: false,
+          canChangeMedicalValues: false
+        },
+        workflow: [
+          'ASHA/AWW updates health data',
+          'Data stored in MongoDB',
+          'AI analyzes anemia risk',
+          'Alert generated',
+          'Displayed in dashboard'
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching adolescent dashboard data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch adolescent dashboard data',
+      error: error.message
+    });
+  }
+});
+
+function schemeListMatch(records, schemeCode, schemeName) {
+  const code = String(schemeCode || '').toLowerCase();
+  return (records || []).find((r) => {
+    const c = String(r.schemeCode || '').toLowerCase();
+    const n = String(r.schemeName || '').toLowerCase();
+    return c === code || n.includes(code) || n.includes(String(schemeName || '').toLowerCase().split(' ')[0]);
+  });
+}
+
+function calculateAgeFromDob(dateOfBirth) {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age -= 1;
+  return age >= 0 ? age : null;
+}
+
+// @desc    Get chat messages between adolescent and ASHA
+// @route   GET /api/asha/adolescent-chat/:name
+// @access  Private
+router.get('/adolescent-chat/:name', verifyFlexibleAuth, async (req, res) => {
+  try {
+    const decodedName = decodeURIComponent(req.params.name || '').trim();
+    if (!decodedName) {
+      return res.status(400).json({ success: false, message: 'Adolescent name is required' });
+    }
+    const nameRegex = new RegExp(`^${escapeRegex(decodedName)}$`, 'i');
+    const messages = await AdolescentChatMessage.find({ adolescentName: nameRegex })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({ success: true, data: messages.reverse() });
+  } catch (error) {
+    console.error('Error fetching adolescent chat messages:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch chat messages', error: error.message });
+  }
+});
+
+// @desc    Send chat message from adolescent/ASHA
+// @route   POST /api/asha/adolescent-chat/:name
+// @access  Private
+router.post('/adolescent-chat/:name', verifyFlexibleAuth, async (req, res) => {
+  try {
+    const decodedName = decodeURIComponent(req.params.name || '').trim();
+    const text = String(req.body?.message || '').trim();
+    if (!decodedName || !text) {
+      return res.status(400).json({ success: false, message: 'Adolescent name and message are required' });
+    }
+
+    const role = req.user?.role === 'asha-volunteer' ? 'asha' : 'adolescent';
+    const senderName = req.user?.name || (role === 'asha' ? 'ASHA Worker' : decodedName);
+    const message = await AdolescentChatMessage.create({
+      adolescentName: decodedName,
+      senderRole: role,
+      senderName,
+      message: text
+    });
+
+    res.status(201).json({ success: true, data: message });
+  } catch (error) {
+    console.error('Error posting adolescent chat message:', error);
+    res.status(500).json({ success: false, message: 'Failed to post chat message', error: error.message });
+  }
+});
+
+// @desc    Mark adolescent chat messages as read for ASHA
+// @route   PATCH /api/asha/adolescent-chat/:name/read
+// @access  Private
+router.patch('/adolescent-chat/:name/read', verifyFlexibleAuth, async (req, res) => {
+  try {
+    const decodedName = decodeURIComponent(req.params.name || '').trim();
+    if (!decodedName) {
+      return res.status(400).json({ success: false, message: 'Adolescent name is required' });
+    }
+
+    const role = req.user?.role;
+    if (role !== 'asha-volunteer' && role !== 'anganwadi-worker' && role !== 'super-admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const nameRegex = new RegExp(`^${escapeRegex(decodedName)}$`, 'i');
+    const result = await AdolescentChatMessage.updateMany(
+      { adolescentName: nameRegex, senderRole: 'adolescent', isRead: false },
+      { $set: { isRead: true } }
+    );
+
+    res.json({
+      success: true,
+      data: { updated: result.modifiedCount || 0 }
+    });
+  } catch (error) {
+    console.error('Error marking adolescent chat as read:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark messages as read', error: error.message });
+  }
+});
+
+// @desc    Get ASHA chat inbox grouped by adolescent
+// @route   GET /api/asha/adolescent-chat-inbox
+// @access  Private
+router.get('/adolescent-chat-inbox', verifyFlexibleAuth, async (req, res) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'asha-volunteer' && role !== 'anganwadi-worker' && role !== 'super-admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const grouped = await AdolescentChatMessage.aggregate([
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$adolescentName',
+          lastMessage: { $first: '$message' },
+          lastSenderRole: { $first: '$senderRole' },
+          lastSenderName: { $first: '$senderName' },
+          lastMessageAt: { $first: '$createdAt' },
+          totalMessages: { $sum: 1 }
+        }
+      },
+      { $sort: { lastMessageAt: -1 } },
+      { $limit: 200 }
+    ]);
+
+    const data = grouped.map((g) => ({
+      adolescentName: g._id,
+      lastMessage: g.lastMessage,
+      lastSenderRole: g.lastSenderRole,
+      lastSenderName: g.lastSenderName,
+      lastMessageAt: g.lastMessageAt,
+      totalMessages: g.totalMessages
+    }));
+
+    const names = data.map((d) => d.adolescentName);
+    const unreadAgg = await AdolescentChatMessage.aggregate([
+      {
+        $match: {
+          adolescentName: { $in: names },
+          senderRole: 'adolescent',
+          isRead: false
+        }
+      },
+      { $group: { _id: '$adolescentName', unreadCount: { $sum: 1 } } }
+    ]);
+    const unreadMap = Object.fromEntries(unreadAgg.map((u) => [u._id, u.unreadCount]));
+    const dataWithUnread = data.map((d) => ({ ...d, unreadCount: unreadMap[d.adolescentName] || 0 }));
+
+    res.json({ success: true, data: dataWithUnread });
+  } catch (error) {
+    console.error('Error fetching adolescent chat inbox:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch chat inbox', error: error.message });
   }
 });
 

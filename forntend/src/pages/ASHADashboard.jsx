@@ -7,6 +7,7 @@ import NotificationsPanel from '../components/ASHA/NotificationsPanel';
 import ReportsSection from '../components/ASHA/ReportsSection';
 import BeneficiaryLookup from '../components/ASHA/BeneficiaryLookup';
 import SchemeAwareness from '../components/ASHA/SchemeAwareness';
+import AdolescentChatInbox from '../components/ASHA/AdolescentChatInbox';
 import ASHAProfile from '../components/Profile/ASHAProfile';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ashaService from '../services/ashaService';
@@ -123,6 +124,7 @@ const ASHADashboard = () => {
     { id: 'beneficiaries', label: 'Beneficiary Records', icon: Users },
     { id: 'alerts', label: 'Health Alerts', icon: AlertTriangle },
     { id: 'scheme', label: 'Scheme Awareness', icon: BookOpen },
+    { id: 'chat', label: 'Adolescent Chat', icon: MessageSquare },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'profile', label: 'My Profile', icon: User }
@@ -374,6 +376,8 @@ const ASHADashboard = () => {
         return <SchemeAwareness />;
       case 'reports':
         return <ReportsSection />;
+      case 'chat':
+        return <AdolescentChatInbox />;
       case 'notifications':
         return <NotificationsPanel notifications={notifications} onRefresh={loadDashboardData} />;
       case 'profile':

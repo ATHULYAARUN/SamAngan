@@ -444,6 +444,30 @@ const ashaService = {
     const response = await apiCall(`/asha/ai-alerts?${params}`);
     return response;
   },
+
+  getAdolescentChatInbox: async () => {
+    return apiCall('/asha/adolescent-chat-inbox');
+  },
+
+  getAdolescentChatMessages: async (adolescentName) => {
+    const safe = encodeURIComponent(String(adolescentName || '').trim());
+    return apiCall(`/asha/adolescent-chat/${safe}`);
+  },
+
+  sendAdolescentChatMessage: async (adolescentName, message) => {
+    const safe = encodeURIComponent(String(adolescentName || '').trim());
+    return apiCall(`/asha/adolescent-chat/${safe}`, {
+      method: 'POST',
+      body: JSON.stringify({ message })
+    });
+  },
+
+  markAdolescentChatRead: async (adolescentName) => {
+    const safe = encodeURIComponent(String(adolescentName || '').trim());
+    return apiCall(`/asha/adolescent-chat/${safe}/read`, {
+      method: 'PATCH'
+    });
+  },
 };
 
 export default ashaService;

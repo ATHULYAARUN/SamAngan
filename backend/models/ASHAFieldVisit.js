@@ -51,6 +51,16 @@ const ashaFieldVisitSchema = new mongoose.Schema({
     date: { type: Date },
     notes: { type: String }
   },
+  adolescentDetails: {
+    lastMenstrualDate: { type: Date },
+    cycleRegularity: { type: String, enum: ['regular', 'irregular', 'unknown'], default: 'unknown' },
+    menstrualIssues: [{ type: String }],
+    painSeverity: { type: Number, min: 0, max: 10 },
+    nutritionIntake: { type: String, enum: ['good', 'average', 'poor', 'unknown'], default: 'unknown' },
+    ifaCompliance: { type: String, enum: ['regular', 'irregular', 'not-taking', 'unknown'], default: 'unknown' },
+    missedIFADoses: { type: Number, min: 0, default: 0 },
+    schoolStatus: { type: String, enum: ['student', 'dropout', 'unknown'], default: 'unknown' }
+  },
   photos: [{ type: String }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });

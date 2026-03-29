@@ -41,362 +41,35 @@ const HealthMonitoringSimple = () => {
   const [aiAlertsLoading, setAiAlertsLoading] = useState(true);
   const [aiAlertsError, setAiAlertsError] = useState(null);
 
-  // Mock data - different data for different centers and categories
-  const getAllHealthData = () => {
-    const baseData = {
-      all: {
-        all: {
-          summary: {
-            highRiskPregnancies: 12,
-            anemiaCases: 34,
-            growthMonitoring: 89,
-            immunizationCoverage: 92,
-            nutritionStatus: {
-              normal: 65,
-              underweight: 25,
-              severe: 10
-            },
-            maternalCompliance: 78
-          },
-          alerts: [
-            {
-              id: 1,
-              type: 'critical',
-              title: 'High Risk Pregnancy Detected',
-              center: 'Akkarakunnu Center',
-              time: '10 minutes ago',
-              status: 'pending',
-              category: 'pregnancy'
-            },
-            {
-              id: 2,
-              type: 'warning',
-              title: 'Immunization Due',
-              center: 'Veliyanoor Center',
-              time: '1 hour ago',
-              status: 'pending',
-              category: 'child'
-            },
-            {
-              id: 3,
-              type: 'info',
-              title: 'Growth Monitoring Scheduled',
-              center: 'Akkarakunnu Center',
-              time: '2 hours ago',
-              status: 'resolved',
-              category: 'child'
-            },
-            {
-              id: 4,
-              type: 'warning',
-              title: 'Adolescent Health Check',
-              center: 'Veliyanoor Center',
-              time: '3 hours ago',
-              status: 'pending',
-              category: 'adolescent'
-            }
-          ]
-        },
-        child: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 18,
-            growthMonitoring: 89,
-            immunizationCoverage: 92,
-            nutritionStatus: {
-              normal: 65,
-              underweight: 25,
-              severe: 10
-            },
-            maternalCompliance: 0
-          },
-          alerts: [
-            {
-              id: 2,
-              type: 'warning',
-              title: 'Immunization Due',
-              center: 'Veliyanoor Center',
-              time: '1 hour ago',
-              status: 'pending',
-              category: 'child'
-            },
-            {
-              id: 3,
-              type: 'info',
-              title: 'Growth Monitoring Scheduled',
-              center: 'Akkarakunnu Center',
-              time: '2 hours ago',
-              status: 'resolved',
-              category: 'child'
-            }
-          ]
-        },
-        pregnancy: {
-          summary: {
-            highRiskPregnancies: 12,
-            anemiaCases: 16,
-            growthMonitoring: 0,
-            immunizationCoverage: 0,
-            nutritionStatus: {
-              normal: 0,
-              underweight: 0,
-              severe: 0
-            },
-            maternalCompliance: 78
-          },
-          alerts: [
-            {
-              id: 1,
-              type: 'critical',
-              title: 'High Risk Pregnancy Detected',
-              center: 'Akkarakunnu Center',
-              time: '10 minutes ago',
-              status: 'pending',
-              category: 'pregnancy'
-            }
-          ]
-        },
-        adolescent: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 8,
-            growthMonitoring: 0,
-            immunizationCoverage: 85,
-            nutritionStatus: {
-              normal: 72,
-              underweight: 20,
-              severe: 8
-            },
-            maternalCompliance: 0
-          },
-          alerts: [
-            {
-              id: 4,
-              type: 'warning',
-              title: 'Adolescent Health Check',
-              center: 'Veliyanoor Center',
-              time: '3 hours ago',
-              status: 'pending',
-              category: 'adolescent'
-            }
-          ]
+  const loadHealthSummary = async () => {
+    try {
+      const response = await adminService.getHealthMonitoringSummary({
+        center: filters.center,
+        category: filters.category
+      });
+      setHealthData(response?.data || null);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Failed to load health summary:', error);
+      setHealthData({
+        summary: {
+          highRiskPregnancies: 0,
+          anemiaCases: 0,
+          growthMonitoring: 0,
+          immunizationCoverage: 0,
+          nutritionStatus: { normal: 0 },
+          maternalCompliance: 0
         }
-      },
-      akkarakunnu: {
-        all: {
-          summary: {
-            highRiskPregnancies: 7,
-            anemiaCases: 18,
-            growthMonitoring: 94,
-            immunizationCoverage: 96,
-            nutritionStatus: {
-              normal: 72,
-              underweight: 20,
-              severe: 8
-            },
-            maternalCompliance: 85
-          },
-          alerts: [
-            {
-              id: 1,
-              type: 'critical',
-              title: 'High Risk Pregnancy Detected',
-              center: 'Akkarakunnu Center',
-              time: '10 minutes ago',
-              status: 'pending',
-              category: 'pregnancy'
-            },
-            {
-              id: 3,
-              type: 'info',
-              title: 'Growth Monitoring Scheduled',
-              center: 'Akkarakunnu Center',
-              time: '2 hours ago',
-              status: 'resolved',
-              category: 'child'
-            }
-          ]
-        },
-        child: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 9,
-            growthMonitoring: 94,
-            immunizationCoverage: 96,
-            nutritionStatus: {
-              normal: 72,
-              underweight: 20,
-              severe: 8
-            },
-            maternalCompliance: 0
-          },
-          alerts: [
-            {
-              id: 3,
-              type: 'info',
-              title: 'Growth Monitoring Scheduled',
-              center: 'Akkarakunnu Center',
-              time: '2 hours ago',
-              status: 'resolved',
-              category: 'child'
-            }
-          ]
-        },
-        pregnancy: {
-          summary: {
-            highRiskPregnancies: 7,
-            anemiaCases: 9,
-            growthMonitoring: 0,
-            immunizationCoverage: 0,
-            nutritionStatus: {
-              normal: 0,
-              underweight: 0,
-              severe: 0
-            },
-            maternalCompliance: 85
-          },
-          alerts: [
-            {
-              id: 1,
-              type: 'critical',
-              title: 'High Risk Pregnancy Detected',
-              center: 'Akkarakunnu Center',
-              time: '10 minutes ago',
-              status: 'pending',
-              category: 'pregnancy'
-            }
-          ]
-        },
-        adolescent: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 0,
-            growthMonitoring: 0,
-            immunizationCoverage: 88,
-            nutritionStatus: {
-              normal: 80,
-              underweight: 15,
-              severe: 5
-            },
-            maternalCompliance: 0
-          },
-          alerts: []
-        }
-      },
-      veliyanoor: {
-        all: {
-          summary: {
-            highRiskPregnancies: 5,
-            anemiaCases: 16,
-            growthMonitoring: 84,
-            immunizationCoverage: 88,
-            nutritionStatus: {
-              normal: 58,
-              underweight: 30,
-              severe: 12
-            },
-            maternalCompliance: 71
-          },
-          alerts: [
-            {
-              id: 2,
-              type: 'warning',
-              title: 'Immunization Due',
-              center: 'Veliyanoor Center',
-              time: '1 hour ago',
-              status: 'pending',
-              category: 'child'
-            },
-            {
-              id: 4,
-              type: 'warning',
-              title: 'Adolescent Health Check',
-              center: 'Veliyanoor Center',
-              time: '3 hours ago',
-              status: 'pending',
-              category: 'adolescent'
-            }
-          ]
-        },
-        child: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 9,
-            growthMonitoring: 84,
-            immunizationCoverage: 88,
-            nutritionStatus: {
-              normal: 58,
-              underweight: 30,
-              severe: 12
-            },
-            maternalCompliance: 0
-          },
-          alerts: [
-            {
-              id: 2,
-              type: 'warning',
-              title: 'Immunization Due',
-              center: 'Veliyanoor Center',
-              time: '1 hour ago',
-              status: 'pending',
-              category: 'child'
-            }
-          ]
-        },
-        pregnancy: {
-          summary: {
-            highRiskPregnancies: 5,
-            anemiaCases: 7,
-            growthMonitoring: 0,
-            immunizationCoverage: 0,
-            nutritionStatus: {
-              normal: 0,
-              underweight: 0,
-              severe: 0
-            },
-            maternalCompliance: 71
-          },
-          alerts: []
-        },
-        adolescent: {
-          summary: {
-            highRiskPregnancies: 0,
-            anemiaCases: 8,
-            growthMonitoring: 0,
-            immunizationCoverage: 82,
-            nutritionStatus: {
-              normal: 65,
-              underweight: 25,
-              severe: 10
-            },
-            maternalCompliance: 0
-          },
-          alerts: [
-            {
-              id: 4,
-              type: 'warning',
-              title: 'Adolescent Health Check',
-              center: 'Veliyanoor Center',
-              time: '3 hours ago',
-              status: 'pending',
-              category: 'adolescent'
-            }
-          ]
-        }
-      }
-    };
-
-    return baseData;
+      });
+    }
   };
 
-  // Simulate data loading
   useEffect(() => {
     console.log('🏥 HealthMonitoringSimple: Component mounted');
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await loadHealthSummary();
         console.log('✅ Health data loaded successfully');
       } catch (error) {
         console.error('❌ Error loading health data:', error);
@@ -408,39 +81,13 @@ const HealthMonitoringSimple = () => {
     loadData();
   }, []);
 
-  // Update data when filters change
   useEffect(() => {
-    // Filter data based on selected filters
-    const getFilteredHealthData = () => {
-      const allData = getAllHealthData();
-      let filteredData;
-
-      // Get data based on center filter
-      const centerKey = filters.center === 'all' ? 'all' : filters.center;
-      const categoryKey = filters.category === 'all' ? 'all' : filters.category;
-
-      // Navigate to the correct data structure
-      if (allData[centerKey] && allData[centerKey][categoryKey]) {
-        filteredData = allData[centerKey][categoryKey];
-      } else {
-        // Fallback to all data if specific combination doesn't exist
-        filteredData = allData.all.all;
-      }
-
-      return filteredData;
-    };
-
-    const filteredData = getFilteredHealthData();
-    setHealthData(filteredData);
-    setLastUpdated(new Date());
-    console.log('🔄 Data filtered based on:', filters);
-    console.log('📊 Filtered data:', filteredData);
+    loadHealthSummary();
   }, [filters]);
 
   const refreshData = async () => {
     setIsRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setLastUpdated(new Date());
+    await loadHealthSummary();
     setIsRefreshing(false);
   };
 
@@ -584,8 +231,8 @@ const HealthMonitoringSimple = () => {
               <h3 className="text-sm font-medium text-gray-600">Growth Monitoring</h3>
               <TrendingUp className="w-5 h-5 text-green-500" />
             </div>
-            <div className="text-2xl font-bold text-green-600 mb-2">{healthData?.summary?.growthMonitoring || 0}%</div>
-            <div className="text-xs text-gray-500">Coverage rate</div>
+            <div className="text-2xl font-bold text-green-600 mb-2">{healthData?.summary?.growthMonitoring || 0}</div>
+            <div className="text-xs text-gray-500">Monitored records</div>
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
@@ -593,8 +240,8 @@ const HealthMonitoringSimple = () => {
               <h3 className="text-sm font-medium text-gray-600">Immunization</h3>
               <Syringe className="w-5 h-5 text-blue-500" />
             </div>
-            <div className="text-2xl font-bold text-blue-600 mb-2">{healthData?.summary?.immunizationCoverage || 0}%</div>
-            <div className="text-xs text-gray-500">Coverage rate</div>
+            <div className="text-2xl font-bold text-blue-600 mb-2">{healthData?.summary?.immunizationCoverage || 0}</div>
+            <div className="text-xs text-gray-500">Immunization records</div>
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
@@ -602,8 +249,8 @@ const HealthMonitoringSimple = () => {
               <h3 className="text-sm font-medium text-gray-600">Normal Nutrition</h3>
               <Baby className="w-5 h-5 text-green-500" />
             </div>
-            <div className="text-2xl font-bold text-green-600 mb-2">{healthData?.summary?.nutritionStatus?.normal || 0}%</div>
-            <div className="text-xs text-gray-500">Children with normal nutrition</div>
+            <div className="text-2xl font-bold text-green-600 mb-2">{healthData?.summary?.nutritionStatus?.normal || 0}</div>
+            <div className="text-xs text-gray-500">Normal nutrition records</div>
           </div>
 
           <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
@@ -611,8 +258,8 @@ const HealthMonitoringSimple = () => {
               <h3 className="text-sm font-medium text-gray-600">Maternal Compliance</h3>
               <Heart className="w-5 h-5 text-purple-500" />
             </div>
-            <div className="text-2xl font-bold text-purple-600 mb-2">{healthData?.summary?.maternalCompliance || 0}%</div>
-            <div className="text-xs text-gray-500">Following guidelines</div>
+            <div className="text-2xl font-bold text-purple-600 mb-2">{healthData?.summary?.maternalCompliance || 0}</div>
+            <div className="text-xs text-gray-500">Compliant maternal records</div>
           </div>
         </div>
 

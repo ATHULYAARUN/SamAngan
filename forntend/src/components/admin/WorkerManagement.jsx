@@ -75,16 +75,29 @@ const WorkerManagement = () => {
   const fetchWorkers = async () => {
     setLoading(true);
     try {
-      // API call to fetch workers
-      const response = await fetch('/api/admin/workers', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('adminToken') || localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      if (data.success) {
-        setWorkers(data.data);
-      }
+      // Fetch all pages so all worker roles are shown
+      const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+      const pageSize = 100;
+      let page = 1;
+      let totalPages = 1;
+      let allWorkers = [];
+
+      do {
+        const response = await fetch(`/api/admin/workers?page=${page}&limit=${pageSize}&role=all`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await response.json();
+        if (!data.success) break;
+
+        const batch = Array.isArray(data.data) ? data.data : [];
+        allWorkers = allWorkers.concat(batch);
+        totalPages = data?.pagination?.pages || 1;
+        page += 1;
+      } while (page <= totalPages);
+
+      setWorkers(allWorkers);
     } catch (error) {
       console.error('Error fetching workers:', error);
     } finally {

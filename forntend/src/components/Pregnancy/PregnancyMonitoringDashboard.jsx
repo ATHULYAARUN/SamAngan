@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar, 
   User, 
@@ -39,6 +39,7 @@ import {
   computeSupplementCompliancePercent,
   parseBp,
 } from '../../utils/pregnancyHealthMetrics';
+import { buildPregnancyInsightsFromAshaVisits } from '../../utils/pregnancyAshaInsights';
 
 ChartJS.register(
   CategoryScale,
@@ -76,9 +77,6 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
   const [selfReportIron, setSelfReportIron] = useState(true);
   const [selfReportCalcium, setSelfReportCalcium] = useState(true);
   const [selfReportFolic, setSelfReportFolic] = useState(true);
-  const [mlLivePrediction, setMlLivePrediction] = useState(null);
-  const [mlLiveLoading, setMlLiveLoading] = useState(false);
-  const [mlLiveError, setMlLiveError] = useState(null);
   const [reminderSmsEnabled, setReminderSmsEnabled] = useState(true);
 
   const totalVisitsCount = ashaSummary?.totalVisits ?? profile?.visits?.length ?? 0;
@@ -168,69 +166,10 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
     []
   );
 
-  const fetchLiveMlPrediction = useCallback(async () => {
-    if (!profile?.health) return;
-    const apiBase = import.meta.env.VITE_API_URL || '/api';
-    const token = localStorage.getItem('authToken') || localStorage.getItem('firebaseToken');
-    const { sys, dia } = parseBp(profile.health.bp);
-    const visitRegularity =
-      totalVisitsCount >= 4 ? 'regular' : totalVisitsCount >= 1 ? 'irregular' : 'poor';
-    const suppPct = computeSupplementCompliancePercent(
-      profile.supplements
-        ? Object.fromEntries(
-            Object.entries(profile.supplements).map(([k, v]) => {
-              const ashaCount = ashaSummary?.supplements?.[k] ?? 0;
-              const tabletsPerVisit = k === 'folicAcid' ? 5 : 7;
-              const fromAsha = ashaCount * tabletsPerVisit;
-              return [k, { ...v, current: (v.current || 0) + fromAsha }];
-            })
-          )
-        : {}
-    );
-
-    const body = {
-      womanId: profile.woman?.id,
-      age: profile.woman?.age,
-      gestationalWeek: profile.woman?.gestationalWeek,
-      hb: Number(profile.health.hemoglobin ?? profile.health.hb),
-      bp: { systolic: sys, diastolic: dia },
-      weight: Number(profile.health.weight),
-      bmi: Number(profile.health.bmi),
-      symptoms: [],
-      visitRegularity,
-      supplementCompliance: suppPct,
-      ml_model: 'random_forest',
-    };
-
-    setMlLiveLoading(true);
-    setMlLiveError(null);
-    try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(`${apiBase.replace(/\/$/, '')}/pregnancy/predict`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || data.error || `Prediction failed (${res.status})`);
-      }
-      setMlLivePrediction(data.prediction || data);
-    } catch (e) {
-      setMlLiveError(e.message || 'ML service unavailable. Start backend and Python ML on port 8000.');
-      setMlLivePrediction(null);
-    } finally {
-      setMlLiveLoading(false);
-    }
-  }, [profile, ashaSummary, totalVisitsCount]);
-
-  useEffect(() => {
-    if (activeTab === 'ai-insights' && profile?.health) {
-      fetchLiveMlPrediction();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh ML when opening AI tab or profile updates
-  }, [activeTab, profile?.woman?.id, profile?.health?.lastUpdated]);
+  const ashaFieldInsights = useMemo(
+    () => (profile ? buildPregnancyInsightsFromAshaVisits(ashaVisitsList, profile) : null),
+    [ashaVisitsList, profile]
+  );
 
   console.log('PregnancyMonitoringDashboard: Component mounted with props:', { womanId, userRole, userData });
 
@@ -509,9 +448,6 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
       }
       setShowSupplementModal(false);
       await fetchPregnancyProfile();
-      if (activeTab === 'ai-insights') {
-        await fetchLiveMlPrediction();
-      }
     } catch (e) {
       alert(e.message || 'Failed to save');
     } finally {
@@ -611,6 +547,29 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
   const carePlan = adv.personalizedCarePlan || {};
   const profilePredictions = aiPred.predictions && typeof aiPred.predictions === 'object' ? aiPred.predictions : {};
 
+  const mergedPredAnalytics = {
+    ...predAnalytics,
+    ...(ashaFieldInsights?.predictiveAnalytics || {}),
+  };
+  const mergedNutr = {
+    ...nutr,
+    ...(ashaFieldInsights?.nutritionalAnalysis || {}),
+  };
+  const mergedBeh = {
+    ...beh,
+    ...(ashaFieldInsights?.behavioralInsights || {}),
+  };
+  const mergedCarePlan = {
+    ...carePlan,
+    ...(ashaFieldInsights?.personalizedCarePlan || {}),
+  };
+  const displayRiskScore = ashaFieldInsights?.riskScore ?? aiPred.riskScore;
+  const displayOverallRisk = (ashaFieldInsights?.overallRisk ?? aiPred.overallRisk ?? 'unknown')
+    .toString()
+    .toLowerCase();
+  const insightRecommendations =
+    ashaFieldInsights?.recommendations?.length ? ashaFieldInsights.recommendations : aiPred.recommendations || [];
+
   console.log('PregnancyMonitoringDashboard: Rendering with profile:', profile);
 
   return (
@@ -689,7 +648,7 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
               { id: 'appointments', label: 'Appointments', icon: Calendar },
               { id: 'asha-visits', label: 'ASHA Visits', icon: Users },
               { id: 'milestones', label: 'Milestones', icon: CheckCircle },
-              { id: 'ai-insights', label: 'AI Insights', icon: Brain }
+              { id: 'ai-insights', label: 'Health insights', icon: Brain }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1239,93 +1198,48 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
 
           {activeTab === 'ai-insights' && (
             <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-lg font-semibold text-gray-800">AI-Powered Health Intelligence</h3>
-                <button
-                  type="button"
-                  onClick={() => fetchLiveMlPrediction()}
-                  className="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-800 font-medium"
-                >
-                  <RefreshCw className={`w-4 h-4 ${mlLiveLoading ? 'animate-spin' : ''}`} />
-                  Refresh live risk (ML)
-                </button>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Health insights</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {ashaFieldInsights
+                    ? 'Derived from your ASHA worker field visits (vitals, flags, supplements). No separate ML service is used.'
+                    : 'When your ASHA worker logs field visits for you, risk and supplement notes will appear here. Profile data fills the gaps below.'}
+                </p>
               </div>
 
-              {/* Live ML (POST /api/pregnancy/predict → Python service when running) */}
-              <div className="bg-gradient-to-r from-indigo-50 to-violet-100 rounded-xl p-6 border border-indigo-200">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-800">Live ML risk (Python service)</h4>
-                  <span className="text-xs text-gray-500">Runs when you open this tab or tap Refresh</span>
-                </div>
-                {mlLiveLoading && (
-                  <p className="text-sm text-indigo-800 flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin" /> Contacting ML service…
-                  </p>
-                )}
-                {mlLiveError && <p className="text-sm text-red-700 bg-red-50 rounded p-2">{mlLiveError}</p>}
-                {!mlLiveLoading && !mlLiveError && mlLivePrediction && (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-2xl font-bold text-indigo-900">
-                        {mlLivePrediction.risk != null ? String(mlLivePrediction.risk) : '—'}
-                      </span>
-                      {mlLivePrediction.score != null && (
-                        <span className="text-sm text-gray-700">
-                          Confidence:{' '}
-                          {Number(mlLivePrediction.score) <= 1
-                            ? `${Math.round(Number(mlLivePrediction.score) * 100)}%`
-                            : `${Math.round(Number(mlLivePrediction.score))}%`}
-                        </span>
-                      )}
-                      {mlLivePrediction.ml_model_used && (
-                        <span className="text-xs bg-white/80 px-2 py-0.5 rounded border border-indigo-200">
-                          {mlLivePrediction.ml_model_used}
-                        </span>
-                      )}
-                    </div>
-                    {Array.isArray(mlLivePrediction.factors) && mlLivePrediction.factors.length > 0 && (
-                      <p className="text-sm text-gray-700">
-                        <strong>Factors:</strong> {mlLivePrediction.factors.join('; ')}
-                      </p>
-                    )}
-                    {Array.isArray(mlLivePrediction.recommendations) && mlLivePrediction.recommendations.length > 0 && (
-                      <ul className="list-disc list-inside text-sm text-gray-700">
-                        {mlLivePrediction.recommendations.map((r, i) => (
-                          <li key={i}>{r}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-                {!mlLiveLoading && !mlLiveError && !mlLivePrediction && (
-                  <p className="text-sm text-gray-600">Open this tab or refresh to load live risk from the ML API.</p>
-                )}
-              </div>
-
-              {/* Profile snapshot (from /profile; may differ from live ML above) */}
+              {/* Risk summary — ASHA field visits when available */}
               <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-medium text-gray-800">Overall risk (profile snapshot)</h4>
+                  <h4 className="font-medium text-gray-800">
+                    Overall risk {ashaFieldInsights ? '(from ASHA visits)' : '(profile)'}
+                  </h4>
                   <Brain className="w-6 h-6 text-purple-600" />
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-3xl font-bold text-purple-800">
-                    {aiPred.riskScore != null ? `${aiPred.riskScore}%` : '—'}
+                    {displayRiskScore != null ? `${displayRiskScore}%` : '—'}
                   </div>
                   <div>
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        (aiPred.overallRisk || '').toLowerCase() === 'low'
+                        displayOverallRisk === 'low'
                           ? 'bg-green-100 text-green-800'
-                          : (aiPred.overallRisk || '').toLowerCase() === 'medium'
+                          : displayOverallRisk === 'medium'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
                       }`}
                     >
-                      {(aiPred.overallRisk || 'unknown').toString().toUpperCase()} RISK
+                      {displayOverallRisk.toUpperCase()} RISK
                     </span>
                   </div>
                 </div>
+                {ashaFieldInsights?.reasons?.length > 0 && (
+                  <ul className="mt-4 list-disc list-inside text-sm text-gray-700 space-y-1">
+                    {ashaFieldInsights.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {/* Predictive Analytics */}
@@ -1337,19 +1251,19 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-blue-50 rounded-lg p-4">
                     <p className="text-sm text-blue-600 font-medium">Predicted Birth Weight</p>
-                    <p className="text-xl font-bold text-blue-800">{predAnalytics.birthWeightPrediction ?? '—'}</p>
+                    <p className="text-xl font-bold text-blue-800">{mergedPredAnalytics.birthWeightPrediction ?? '—'}</p>
                   </div>
                   <div className="bg-green-50 rounded-lg p-4">
                     <p className="text-sm text-green-600 font-medium">Expected Delivery Date</p>
-                    <p className="text-xl font-bold text-green-800">{predAnalytics.deliveryDatePrediction ?? '—'}</p>
+                    <p className="text-xl font-bold text-green-800">{mergedPredAnalytics.deliveryDatePrediction ?? '—'}</p>
                   </div>
                   <div className="bg-purple-50 rounded-lg p-4">
                     <p className="text-sm text-purple-600 font-medium">Complications Risk</p>
-                    <p className="text-xl font-bold text-purple-800">{predAnalytics.complicationsRisk ?? '—'}</p>
+                    <p className="text-xl font-bold text-purple-800">{mergedPredAnalytics.complicationsRisk ?? '—'}</p>
                   </div>
                   <div className="bg-orange-50 rounded-lg p-4">
                     <p className="text-sm text-orange-600 font-medium">Recovery Time</p>
-                    <p className="text-xl font-bold text-orange-800">{predAnalytics.recoveryTimePrediction ?? '—'}</p>
+                    <p className="text-xl font-bold text-orange-800">{mergedPredAnalytics.recoveryTimePrediction ?? '—'}</p>
                   </div>
                 </div>
               </div>
@@ -1361,24 +1275,25 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                   Nutritional Analysis
                 </h4>
                 <div className="space-y-3">
-                  {Object.keys(nutr).length === 0 ? (
+                  {Object.keys(mergedNutr).length === 0 ? (
                     <p className="text-sm text-gray-500">No detailed nutritional breakdown in your profile yet.</p>
                   ) : (
-                    Object.entries(nutr).map(([key, value]) => (
+                    Object.entries(mergedNutr).map(([key, value]) => (
                     <div key={key} className="flex items-center justify-between">
                       <span className="text-sm font-medium text-gray-700 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
                       <div className="flex items-center space-x-2">
                         <div className="w-24 bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${
-                              value === 'excellent' ? 'bg-green-500' :
-                              value === 'adequate' ? 'bg-blue-500' :
-                              value === 'moderate' ? 'bg-yellow-500' : 'bg-red-500'
+                              value === 'excellent' || value === 'adequate' ? 'bg-green-500' :
+                              value === 'moderate' ? 'bg-yellow-500' :
+                              value === 'needs_improvement' ? 'bg-red-500' : 'bg-blue-500'
                             }`}
                             style={{ 
                               width: value === 'excellent' ? '100%' :
                                      value === 'adequate' ? '75%' :
-                                     value === 'moderate' ? '50%' : '25%'
+                                     value === 'moderate' ? '50%' :
+                                     value === 'needs_improvement' ? '30%' : '25%'
                             }}
                           />
                         </div>
@@ -1386,9 +1301,10 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                           value === 'excellent' ? 'bg-green-100 text-green-800' :
                           value === 'adequate' ? 'bg-blue-100 text-blue-800' :
                           value === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
+                          value === 'needs_improvement' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-800'
                         }`}>
-                          {String(value).replace('_', ' ')}
+                          {String(value).replace(/_/g, ' ')}
                         </span>
                       </div>
                     </div>
@@ -1404,25 +1320,28 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                   Behavioral Insights
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {Object.keys(beh).length === 0 ? (
+                  {Object.keys(mergedBeh).length === 0 ? (
                     <p className="text-sm text-gray-500 col-span-full">No behavioral insights in profile yet.</p>
                   ) : (
-                    Object.entries(beh).map(([key, value]) => (
+                    Object.entries(mergedBeh).map(([key, value]) => (
                     <div key={key} className="text-center">
                       <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 ${
+                        typeof value === 'number' ? 'bg-blue-100' :
                         value === 'good' || value === 'adequate' ? 'bg-green-100' :
-                        value === 'moderate' ? 'bg-yellow-100' : 'bg-red-100'
+                        value === 'moderate' || value === 'needs_follow_up' ? 'bg-yellow-100' : 'bg-red-100'
                       }`}>
                         <Activity className={`w-8 h-8 ${
+                          typeof value === 'number' ? 'text-blue-600' :
                           value === 'good' || value === 'adequate' ? 'text-green-600' :
-                          value === 'moderate' ? 'text-yellow-600' : 'text-red-600'
+                          value === 'moderate' || value === 'needs_follow_up' ? 'text-yellow-600' : 'text-red-600'
                         }`} />
                       </div>
                       <p className="text-xs font-medium text-gray-700 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
                       <p className={`text-xs ${
                         value === 'good' || value === 'adequate' ? 'text-green-600' :
-                        value === 'moderate' ? 'text-yellow-600' : 'text-red-600'
-                      }`}>{value}</p>
+                        value === 'moderate' || value === 'needs_follow_up' ? 'text-yellow-600' :
+                        typeof value === 'number' ? 'text-gray-700' : 'text-red-600'
+                      }`}>{typeof value === 'number' ? value : String(value)}</p>
                     </div>
                   ))
                   )}
@@ -1438,12 +1357,12 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                 <div className="space-y-4">
                   <div>
                     <span className="text-sm font-medium text-gray-700">Next Critical Checkup:</span>
-                    <p className="text-sm text-gray-600">{carePlan.nextCriticalCheckup ?? '—'}</p>
+                    <p className="text-sm text-gray-600">{mergedCarePlan.nextCriticalCheckup ?? '—'}</p>
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-700">Recommended Tests:</span>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {(carePlan.recommendedTests || []).map((test, index) => (
+                      {(mergedCarePlan.recommendedTests || []).map((test, index) => (
                         <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
                           {test}
                         </span>
@@ -1453,7 +1372,7 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                   <div>
                     <span className="text-sm font-medium text-gray-700">Lifestyle Modifications:</span>
                     <ul className="list-disc list-inside text-sm text-gray-600 mt-1">
-                      {(carePlan.lifestyleModifications || []).map((mod, index) => (
+                      {(mergedCarePlan.lifestyleModifications || []).map((mod, index) => (
                         <li key={index}>{mod}</li>
                       ))}
                     </ul>
@@ -1462,7 +1381,7 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                     <span className="text-sm font-medium text-gray-700">Warning Signs to Watch:</span>
                     <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-1">
                       <ul className="list-disc list-inside text-sm text-red-700">
-                        {(carePlan.warningSigns || []).map((sign, index) => (
+                        {(mergedCarePlan.warningSigns || []).map((sign, index) => (
                           <li key={index}>{sign}</li>
                         ))}
                       </ul>
@@ -1475,8 +1394,32 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <h4 className="font-medium text-gray-800 mb-4">Comprehensive Risk Analysis</h4>
                 <div className="space-y-3">
-                  {Object.keys(profilePredictions).length === 0 ? (
-                    <p className="text-sm text-gray-500">No per-condition breakdown in profile. Live ML above shows current model output.</p>
+                  {ashaFieldInsights?.riskBreakdown?.length ? (
+                    ashaFieldInsights.riskBreakdown.map((row) => (
+                      <div key={row.key} className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">{row.label}</span>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                row.risk === 'high' ? 'bg-red-500' :
+                                row.risk === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                              }`}
+                              style={{ width: `${(row.probability ?? 0.15) * 100}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                            row.risk === 'high' ? 'bg-red-100 text-red-800' :
+                            row.risk === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {row.risk}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : Object.keys(profilePredictions).length === 0 ? (
+                    <p className="text-sm text-gray-500">No per-condition breakdown in profile. ASHA field visits will add a breakdown when available.</p>
                   ) : (
                     Object.entries(profilePredictions).map(([key, prediction]) => (
                     <div key={key} className="flex items-center justify-between">
@@ -1514,10 +1457,10 @@ const PregnancyMonitoringDashboard = ({ womanId, userRole, userData }) => {
                   AI-Powered Recommendations
                 </h4>
                 <div className="space-y-2">
-                  {(aiPred.recommendations || []).length === 0 ? (
+                  {(insightRecommendations || []).length === 0 ? (
                     <p className="text-sm text-gray-500">No recommendations in profile.</p>
                   ) : (
-                    (aiPred.recommendations || []).map((rec, index) => (
+                    (insightRecommendations || []).map((rec, index) => (
                     <div key={index} className="flex items-center space-x-2">
                       <CheckCircle className="w-4 h-4 text-purple-600" />
                       <span className="text-sm text-gray-700">{rec}</span>
